@@ -213,23 +213,26 @@ body:has(#overlay:not(.hidden)) :is(#hud, #gauge, #hud-guide) { visibility: hidd
 .guard-meter .charge-track i { transform: scaleX(0); transform-origin: left; }
 .guard-result { margin-top: 7px; color: #d7f3ff; font-size: 9px; letter-spacing: .15em; text-align: center; }
 #fighter-markers { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.fighter-marker { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 7px; white-space: nowrap; font: 600 10px/1.3 "JetBrains Mono", ui-monospace, monospace; letter-spacing: .08em; text-shadow: 0 1px 3px #000, 0 0 7px #000; }
-.fighter-marker[hidden] { display: none; }
-.marker-diamond { width: 8px; height: 8px; flex: none; border: 1px solid currentColor; transform: rotate(45deg); box-shadow: 0 0 4px #000; }
+/* Fighter name tags sit just above the head. Blue = friendly, red = aggroed, yellow = your locked target, grey = defeated. */
+.fighter-marker { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 7px; padding-bottom: 6px; color: #5cb8ff; white-space: nowrap; font: 600 10px/1.3 "JetBrains Mono", ui-monospace, monospace; letter-spacing: .08em; text-shadow: 0 1px 3px #000, 0 0 7px #000; transition: opacity .25s; }
+.fighter-marker.faint { opacity: .3; }
+.marker-diamond { width: 7px; height: 7px; flex: none; border: 1px solid currentColor; transform: rotate(45deg); background: color-mix(in srgb, currentColor 35%, transparent); box-shadow: 0 0 4px #000; }
 .marker-text { display: flex; flex-direction: column; gap: 2px; }
 .marker-text b { font: inherit; }
-/* Name tags: blue = friendly, red = aggroed, yellow = your locked target (wins over both), grey = defeated. */
-.fighter-marker { color: #5cb8ff; }
-.fighter-marker .marker-diamond { background: #5cb8ff55; }
+.marker-text small { font: 500 9px/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: .04em; opacity: .7; }
+.marker-arrow { display: none; font-size: 11px; line-height: 1; transform-origin: center; }
+.fighter-marker.offscreen .marker-arrow { display: block; }
+.fighter-marker.offscreen .marker-diamond { display: none; }
 .fighter-marker.hostile { color: #ff4d42; }
-.fighter-marker.hostile .marker-diamond { background: #ff4d4266; }
 .fighter-marker.locked { color: #ffe196; z-index: 1; }
-.fighter-marker.locked .marker-text { padding: 3px 6px; background: #201708dc; border: 1px solid #ffcb6477; }
-.fighter-marker.locked .marker-diamond { background: #ffd23f66; outline: 1px solid currentColor; outline-offset: 4px; }
+.fighter-marker.locked .marker-diamond { outline: 1px solid currentColor; outline-offset: 3px; }
 .fighter-marker.locked.offscreen .marker-arrow { filter: drop-shadow(0 0 4px #ffd23f); }
+.fighter-marker.occluded .marker-diamond { border-style: dashed; }
 .fighter-marker.defeated { color: #9aa0a6; }
 .fighter-marker.defeated .marker-diamond { background: none; }
 .fighter-marker.stasis .marker-diamond { border-color: #b8acff; box-shadow: 0 0 12px #7665ff; }
+.fighter-marker[hidden] { display: none; }
+/* Name tags: blue = friendly, red = aggroed, yellow = your locked target (wins over both), grey = defeated. */
 /* Zoom box: pops up over a far locked target for 2 s; the game draws into it, the frame and name sit on top. */
 #target-view { position: absolute; left: 0; top: 0; width: 170px; height: 115px; border: 1px solid #ffd23fcc; box-shadow: 0 0 0 1px #0008, 0 6px 24px #0007; pointer-events: none; }
 #target-view[hidden] { display: none; }
@@ -237,10 +240,6 @@ body:has(#overlay:not(.hidden)) :is(#hud, #gauge, #hud-guide) { visibility: hidd
 #target-view::before, #target-view::after { content: ""; position: absolute; left: 50%; top: 50%; background: #ffd23f99; }
 #target-view::before { width: 14px; height: 1px; margin-left: -7px; }
 #target-view::after { width: 1px; height: 14px; margin-top: -7px; }
-.fighter-marker.occluded .marker-diamond { border-style: dashed; }
-.marker-arrow { display: none; font-size: 11px; line-height: 1; transform-origin: center; }
-.fighter-marker.offscreen .marker-arrow { display: block; }
-.fighter-marker.offscreen .marker-diamond { display: none; }
 .vitals { position: absolute; left: 4%; top: 5%; width: 145px; display: grid; gap: 8px; font: 600 9px/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: .1em; color: #c9e7f4; }
 .vital { display: grid; grid-template-columns: 1fr auto; gap: 4px; }
 .vital b { font: inherit; color: #f0faff; }
@@ -396,10 +395,11 @@ body.super-block-active::after { content:""; position:fixed; inset:0; z-index:5;
 #master-mute[aria-pressed="true"] { color: #ffd400; border-color: #ffd40099; }
 #fighter-roster { cursor: default; }
 .roster-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.roster-column { --side: var(--ui-friend); min-width: 0; padding: 8px; margin: -8px; border-radius: 5px; transition: background .15s; }
+/* Fixed-height columns: heading on top, persistence switch on the bottom, and only the card list between them scrolls. */
+.roster-column { --side: var(--ui-friend); min-width: 0; height: clamp(240px, 54vh, 520px); box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #ffffff0d; border-radius: 5px; background: #0a1620; transition: background .15s; }
 .roster-column[data-side=foe] { --side: var(--ui-foe); }
 .roster-column.drag-over { background: color-mix(in srgb, var(--side) 10%, transparent); outline: 1px dashed var(--side); }
-.roster-column h3 { display: flex; justify-content: space-between; margin: 0 0 8px; font: 600 11px "JetBrains Mono", monospace; letter-spacing: .18em; text-transform: uppercase; color: var(--side); }
+.roster-column h3 { flex: none; display: flex; justify-content: space-between; margin: 0; padding: 9px 8px 7px; font: 600 11px "JetBrains Mono", monospace; letter-spacing: .18em; text-transform: uppercase; color: var(--side); }
 .roster-count { color: var(--ui-dim); letter-spacing: .05em; }
 .roster-list { display: grid; gap: 6px; min-height: 52px; }
 .roster-empty { display: grid; place-items: center; margin: 0; min-height: 52px; border: 1px dashed #ffffff26; border-radius: 4px; color: var(--ui-dim); font-size: 11px; }
@@ -428,10 +428,15 @@ body.super-block-active::after { content:""; position:fixed; inset:0; z-index:5;
   .pause-head { flex-direction: column; align-items: flex-start; gap: 6px; }
   #status { text-align: left; }
 }
-@media (max-width: 480px) { .roster-columns { grid-template-columns: 1fr; } }
-.marker-text small { font: 500 9px/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: .04em; opacity: .7; }
-.roster-persist { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 10px; border: 1px solid #ffffff12; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; }
-.roster-persist:hover { border-color: color-mix(in srgb, var(--side) 45%, transparent); }
+@media (max-width: 480px) { .roster-columns { grid-template-columns: 1fr; } .roster-column { height: clamp(220px, 46vh, 420px); } }
+.roster-persist { flex: none; margin: 0; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #ffffff14; background: #0c1a25; cursor: pointer; font-size: 12px; font-weight: 500; }
+.roster-column .roster-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; align-content: start; padding: 4px 8px 10px; scrollbar-width: thin; scrollbar-color: #ffffff26 transparent;
+  -webkit-mask-image: linear-gradient(transparent, #000 6px, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(transparent, #000 6px, #000 calc(100% - 14px), transparent); }
 .roster-persist span { display: grid; }
 .roster-persist small { font-size: 10px; font-weight: 400; color: var(--ui-dim); }
-.roster-persist input { width: 15px; height: 15px; margin: 0; accent-color: var(--side); }
+.switch { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 32px; height: 18px; margin: 0; border-radius: 9px; background: #ffffff24; cursor: pointer; transition: background .18s; }
+.switch::before { content: ""; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #dce8f0; box-shadow: 0 1px 3px #0008; transition: transform .18s; }
+.switch:checked { background: var(--side); }
+.switch:checked::before { transform: translateX(14px); background: #fff; }
+.roster-persist:hover .switch:not(:checked) { background: #ffffff38; }
+@media (prefers-reduced-motion: reduce) { .switch, .switch::before { transition: none; } }

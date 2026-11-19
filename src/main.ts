@@ -657,7 +657,7 @@ async function main() {
       if (!lockedTarget) lockedTarget = nearestEnemy(activeFighters(), player.pos);
       pursuitPressedAt = performance.now();
       followUp.cancel(); pursuitHeld = true; pursuitHeldTime = 0; pursuitSuppressed = false;pursuitNotice="";
-      if (!pursuitStartedLocked) hud.toast("TARGET", lockedTarget ? lockedTarget.name : "No enemy nearby");
+      if (!pursuitStartedLocked && !lockedTarget) hud.toast("TARGET", "No enemy nearby");
     }
     if (e.code === "KeyQ") {
       combat.armKick();

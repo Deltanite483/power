@@ -6,6 +6,8 @@ import type { Faora } from "./faora";
 import { projectMarker } from "./markers";
 import { renderControls } from "./controls";
 
+// Fighter name tags: hidden within MARKER_HIDE metres, faint out to MARKER_FAINT.
+const MARKER_HIDE = 40, MARKER_FAINT = 100;
 // A place counts as "ahead" within ~20° of your horizontal flight path, once you're actually moving.
 const FLY_TOWARD_COS = Math.cos(20 * Math.PI / 180);
 const FLY_TOWARD_SPEED = 8;
@@ -119,8 +121,13 @@ export class Hud {
       else this.markerPoint.copy(fighter.pos).y += 2.25 * fighter.bodyScale;
       const screen = projectMarker(camera, this.markerPoint, innerWidth, innerHeight);
       const metres = camera.position.distanceTo(this.markerPoint);
+      // Close fighters need no tag: none inside 40 m, a faint one out to 100 m. Off-screen edge arrows always show.
+      const near = !screen.offscreen && metres < MARKER_FAINT;
+      marker.hidden = near && metres < MARKER_HIDE;
+      if (marker.hidden) continue;
+      marker.classList.toggle("faint", near);
       this.set(marker.querySelector(".marker-text small")!, metres < 1000 ? `${Math.round(metres)} m` : `${(metres / 1000).toFixed(metres < 10000 ? 1 : 0)} km`);
-      marker.style.transform = `translate(${screen.x.toFixed(1)}px, ${screen.y.toFixed(1)}px) translate(-50%, -50%)`;
+      marker.style.transform = `translate(${screen.x.toFixed(1)}px, ${screen.y.toFixed(1)}px) translate(-50%, -100%)`;
       marker.classList.toggle("offscreen", screen.offscreen);
       marker.classList.toggle("hostile", fighter.hostile);
       marker.classList.toggle("locked", fighter === this.lockedTarget);
