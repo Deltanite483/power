@@ -45,14 +45,11 @@ async function main() {
   const sound = new Sound();
   setupVolumeControls(sound);
   const status = document.getElementById("status")!;
-  const requestedMap = new URLSearchParams(location.search).get("map");
-  const map = requestedMap === "manhattan" || requestedMap === "manhattan-island" ? requestedMap : "vaduz";
-  const mapLink = document.getElementById(`map-${map}`)!;
-  document.title = `Power — ${mapLink.textContent}`;
-  mapLink.setAttribute("aria-current", "page");
+  // Manhattan maps are parked for now; their loaders stay in place for later.
+  const map = "vaduz" as "vaduz" | "manhattan" | "manhattan-island";
   status.textContent = "Loading terrain…";
   const world = await loadWorld(map);
-  status.textContent = "Painting roads and building world voxels…";
+  status.textContent = "Building the world…";
   const scenery = await Scenery.create(world.terrain, map);
   const hf = new Heightfield(world.terrain);
 
@@ -323,7 +320,7 @@ async function main() {
     refreshRoster();
     retryPlayer.hidden = !player.vitals.eliminated || persistence.enabled;
     menuRevivePlayer.disabled = player.vitals.health >= 100;
-    menuRevivePlayer.textContent = player.vitals.defeated ? "Revive YOU · 100 HP" : "Heal YOU · 100 HP";
+    menuRevivePlayer.textContent = player.vitals.defeated ? "Revive" : "Heal to full";
     pauseActions.hidden = false;
   };
   let guardFeedback = 0;
@@ -435,7 +432,6 @@ async function main() {
       lockedTarget = null;
       followUp.cancel();pursuitSuppressed=pursuitHeld;
       holdingAid=false;
-      hud.toast("GRABBED","Mash punch to break free");
     }
     return true;
   };
@@ -672,7 +668,7 @@ async function main() {
       const wasHoldingFighter = interactions.carrying instanceof Faora;
       const message = interactions.grabOrThrow(camera.position, look, player);
       if (message) {
-        if (!wasHoldingFighter && !(interactions.carrying instanceof Faora)) hud.toast("CARRY / THROW", message);
+        if (!wasHoldingFighter && !(interactions.carrying instanceof Faora)) hud.toast("GRAB", message);
         sound.launch(.35);
       }
     }
@@ -720,7 +716,7 @@ async function main() {
     combat.cancel(); player.combatCharging = false; player.combatAttacking = false;
     followUp.cancel(); pursuitHeld = false; pursuitSuppressed = false; lockedTarget = null;
     holdingAid=false;selfRevive.reset();
-    status.textContent = persistence.enabled?"Downed · automatic return in 25 seconds":player.vitals.downed?"Downed · resume and mash left click or wait for a teammate":"Defeated · no revives remaining";
+    status.textContent = persistence.enabled?"Down · back in 25 s":player.vitals.downed?"Down · mash click to get up":"Defeated";
     refreshRecovery();
     if(player.vitals.eliminated && !persistence.enabled){
       overlay.classList.remove("hidden");
@@ -761,7 +757,7 @@ async function main() {
     if (interactions.carrying === fighter) interactions.drop();
     fighter.trails.emit(fighter.pos, 0, 0);
     refreshRecovery();
-    hud.toast(fighter.name.toUpperCase(), persistence.enabled && !fighter.enemyMode?`Returning in 25s · ${fighter.vitals.maxHealth * .75} HP`:fighter.vitals.downed?`Downed · ${fighter.vitals.revivesRemaining} revives left`:"Defeated · no revives remaining");
+    hud.toast(fighter.name.toUpperCase(), persistence.enabled && !fighter.enemyMode?"Back in 25 s":fighter.vitals.downed?"Down":"Defeated");
   };
   fighter.onLeap = () => {
     if(fighter.isDoomsday) {
@@ -930,13 +926,13 @@ async function main() {
     overlay.classList.toggle("hidden", document.pointerLockElement === renderer.domElement);
     refreshRecovery();
     document.getElementById("resume-game")!.textContent = encounterStarted ? "Resume" : "Play";
-    if (document.pointerLockElement !== renderer.domElement && encounterStarted) status.textContent = player.vitals.defeated && persistence.enabled?"Persistence Mode · resume for automatic return":player.vitals.eliminated ? "Defeated · no revives remaining" : player.vitals.downed?"Downed · resume to recover":"Paused";
+    if (document.pointerLockElement !== renderer.domElement && encounterStarted) status.textContent = player.vitals.defeated && persistence.enabled?"Down · back soon":player.vitals.eliminated ? "Defeated" : player.vitals.downed?"Down":"Paused";
   });
   addEventListener("blur",()=>{holdingAid=false;});
   const revivePlayer=(automatic=false)=>{
     if(!player.revive(automatic))return false;
     selfRevive.reset();damageEffects.resetScreen();refreshRecovery();
-    hud.toast("REVIVED",automatic?"75 HP · Persistence Mode":`40 HP · ${player.vitals.revivesRemaining} revives left`);
+    hud.toast("REVIVED",`${Math.round(player.vitals.health)} HP`);
     return true;
   };
   menuRevivePlayer.addEventListener("click", e => {
@@ -945,13 +941,13 @@ async function main() {
       player.vitals.health = 100;
       damageEffects.resetScreen();
       refreshRecovery();
-      status.textContent = "Healed · 100 HP";
+      status.textContent = "Healed";
       return;
     }
     if(!player.revive(false,true))return;
     selfRevive.reset();holdingAid=false;damageEffects.resetScreen();
     persistence.forget("YOU");
-    refreshRecovery();status.textContent="Revived · 100 HP · resume when ready";
+    refreshRecovery();status.textContent="Revived";
   });
   retryPlayer.addEventListener("click", e => {
     e.stopPropagation();
@@ -959,7 +955,7 @@ async function main() {
     selfRevive.reset();revivals.clear();persistence.clear();hitFeed.clear();
     faoraInterrupter = null;
     damageEffects.resetScreen();
-    refreshRecovery(); status.textContent = "Click to play"; play();
+    refreshRecovery(); status.textContent = ""; play();
   });
   const persistenceInput=document.getElementById("persistence-mode") as HTMLInputElement;
   persistenceInput.checked=persistence.enabled;
@@ -970,7 +966,7 @@ async function main() {
     for(const fighter of roster)if(!fighter.enemyMode)fighter.rescueTarget=null;
     try{localStorage.setItem("power.persistence",String(persistence.enabled));}catch{}
     refreshRecovery();
-    if(player.vitals.defeated)status.textContent=persistence.enabled?"Persistence Mode · resume for automatic return":player.vitals.downed?"Downed · resume to recover":"Defeated · no revives remaining";
+    if(player.vitals.defeated)status.textContent=persistence.enabled?"Down · back soon":player.vitals.downed?"Down":"Defeated";
   });
   const revive = (fighter: Faora, offset = { x: 15, z: 10 }) => {
     const hostile = fighter.enemyMode;
@@ -1024,7 +1020,7 @@ async function main() {
     if (fighter === gojo) gojoPowers.reset(gojo);
     persistence.forget(fighter.name);
     refreshRecovery();
-    status.textContent=`${fighter.name} revived · ${fighter.vitals.health} HP`;
+    status.textContent=`${fighter.name} revived`;
   };
   deployFighter(sukuna, true, { x: 24, z: 10 });
   deployFighter(gojo, true, { x: 10, z: -5 });
@@ -1505,11 +1501,11 @@ async function main() {
       persistentRevive:()=>{
         if(interactions.carrying===fighter)interactions.drop();
         if(!fighter.revive(true))return false;
-        refreshRecovery();hud.toast(fighter.name.toUpperCase(),`${fighter.vitals.health} HP · Persistence Mode`);return true;
+        refreshRecovery();hud.toast(fighter.name.toUpperCase(),"Back");return true;
       },
       revive:()=>{
         if(!fighter.revive())return false;
-        refreshRecovery();hud.toast(fighter.name.toUpperCase(),`Revived · ${fighter.vitals.health} HP · ${fighter.vitals.revivesRemaining} left`);
+        refreshRecovery();hud.toast(fighter.name.toUpperCase(),"Revived");
         return true;
       },
     });
@@ -1528,13 +1524,13 @@ async function main() {
     if(persistence.enabled){
       const id=downed?"YOU":nearby.name;
       reviveLabel.textContent=`${downed?"RETURNING":nearby.name.toUpperCase()+" RETURNS"} IN ${Math.ceil(persistence.remainingFor(id))}s`;
-      reviveDetail.textContent="Persistence Mode · 75% health · automatic return";
+      reviveDetail.textContent="";
       const progress=persistence.progressFor(id);reviveFill.style.transform=`scaleX(${progress})`;
       revivePanel.setAttribute("aria-valuenow",`${Math.round(progress*100)}`);return;
     }
     const helper=revivals.helperFor(downed?"YOU":nearby.name);
-    reviveLabel.textContent=downed?(helper?`${helper} IS REVIVING YOU`:"DOWNED · MASH LEFT CLICK"):`HOLD T · REVIVE ${nearby.name.toUpperCase()}`;
-    reviveDetail.textContent=downed?`Self-revive or wait for aid · ${player.vitals.revivesRemaining} revives left · returns at 40 HP`:`${nearby.vitals.revivesRemaining} revives left · aid stops when interrupted`;
+    reviveLabel.textContent=downed?(helper?`${helper.toUpperCase()} IS REVIVING YOU`:"MASH CLICK TO GET UP"):`HOLD T · REVIVE ${nearby.name.toUpperCase()}`;
+    reviveDetail.textContent=downed?`${player.vitals.revivesRemaining} revives left`:"";
     const progress=downed?Math.max(selfRevive.progress,revivals.progressFor("YOU")):revivals.progressFor(nearby.name);
     reviveFill.style.transform=`scaleX(${progress})`;
     revivePanel.setAttribute("aria-valuenow",`${Math.round(progress*100)}`);
@@ -1803,7 +1799,7 @@ async function main() {
     if (!ready && terrain.pendingCount === 0 && terrain.chunkCount > 0) {
       ready = true;
       Object.assign(window, { gameReady: true });
-      status.textContent = "Ready";
+      status.textContent = "";
       (document.getElementById("resume-game") as HTMLButtonElement).disabled = false;
       overlay.classList.add("ready");
     }
