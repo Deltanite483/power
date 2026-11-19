@@ -1,0 +1,61 @@
+import assert from "node:assert/strict";
+import * as THREE from "three";
+import { createServer } from "vite";
+
+const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" });
+try {
+  const { Vitality } = await server.ssrLoadModule("/src/vitality.ts");
+  const v = new Vitality();
+  // A clean full-charge hit takes 24; guard and durability still reduce damage.
+  v.hit(100);
+  assert.equal(v.health, 76); assert.equal(v.orientation, 60);
+  v.update(1); assert.equal(v.health, 76.6); assert.equal(v.orientation, 60);
+  v.update(1); assert.ok(v.orientation > 60 && v.health > 76.6, "orientation recovers after a brief delay");
+  const ordinary = new Vitality(), guarded = new Vitality();
+  ordinary.hit(100); guarded.hit(100);
+  ordinary.update(1); guarded.update(1, true);
+  assert.ok(Math.abs((guarded.health - 76) - 3 * (ordinary.health - 76)) < 1e-9, "guarding heals three times faster immediately");
+  assert.equal(ordinary.orientation, guarded.orientation, "guarding does not speed orientation recovery");
+  const beforeRelease = guarded.health;
+  guarded.update(1);
+  assert.ok(Math.abs(guarded.health - beforeRelease - .6) < 1e-9, "releasing guard restores normal healing");
+  guarded.hit(10);
+  const afterInjury = guarded.health;
+  guarded.update(1, true);
+  assert.ok(guarded.health > afterInjury, "guard healing continues after taking damage");
+  guarded.health=99.9;guarded.update(8,true);guarded.update(1,true);assert.equal(guarded.health,100,'guard healing caps at full HP');
+  guarded.health=0;guarded.update(100,true);assert.equal(guarded.health,0,'guarding cannot revive the defeated');
+  const capped = new Vitality(); capped.hit(1000);
+  assert.equal(capped.health, 70, "extreme hits are capped at 30 HP");
+  const tough = new Vitality(); tough.damageScale = .25; tough.hit(100);
+  assert.ok(Math.abs(tough.health - 94) < 1e-9, "damage scale (Battle Beast) reduces health loss");
+  v.hit(10); const injured = v.health; v.update(1);
+  assert.ok(v.health > injured, "another hit does not interrupt health regeneration");
+  for (let i = 0; i < 30; i++) v.hit(1000);
+  assert.equal(v.health, 0); assert.equal(v.defeated, true);
+  v.update(100); assert.equal(v.health, 0, "defeated fighters cannot self-revive");
+  v.reset(); assert.equal(v.health, 100); assert.equal(v.orientation, 100);
+  globalThis.addEventListener = () => {};
+  globalThis.document ??= { addEventListener() {}, pointerLockElement: null };
+  const { Player } = await server.ssrLoadModule("/src/player.ts");
+  const player = new Player({}, {});
+  player.setFlying(true); assert.equal(player.flying, true);
+  player.receiveHit(40); assert.equal(player.flying, true, "a hit below the stagger limit keeps you flying");
+  player.receiveHit(60); assert.equal(player.flying, false, "a solid hit knocks you out of flight");
+  player.vitals.reset();
+  player.vitals.orientation = 34; player.setFlying(true);
+  assert.equal(player.flying, false, "flight cannot resume while heavily disoriented");
+  player.vitals.orientation = 35; player.setFlying(true);
+  assert.equal(player.flying, true, "flight resumes once orientation is sufficient");
+
+  const { Faora } = await server.ssrLoadModule("/src/faora.ts");
+  const spans = { top: 0, water: false, floor: () => 0, ceil: () => Infinity, solid: () => false };
+  const world = { spans: () => spans, materialAt: () => ({ bounce: 0 }), crater() {}, launch() {} };
+  const fighter = new Faora(world, new THREE.Scene());
+  let deaths = 0; fighter.onDefeated = () => deaths++;
+  for (let i = 0; i < 30 && !fighter.vitals.defeated; i++) fighter.strike(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 260, true, 1000);
+  assert.equal(fighter.vitals.defeated, true); assert.equal(deaths, 1);
+  assert.equal(fighter.availableToFight, false);
+  fighter.spawn(0, 0); assert.equal(fighter.vitals.health, 100); assert.equal(fighter.vitals.defeated, false);
+  console.log("Vitality: damage, orientation, continuous healing, defeat and resummon passed.");
+} finally { await server.close(); }

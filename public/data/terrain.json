@@ -1,0 +1,19 @@
+{
+ "width": 1700,
+ "height": 2900,
+ "cell_m": 10.0,
+ "min_m": 423.2196960449219,
+ "max_m": 2660.92529296875,
+ "step_m": 0.05,
+ "origin_x": -5539.3576720599085,
+ "origin_z": -14871.879115345888,
+ "lv95_origin": [
+  2757539.35767206,
+  1224128.120884654
+ ],
+ "origin_latlon": [
+  47.14936,
+  9.515999
+ ],
+ "source": "swissALTI3D (c) swisstopo, 2 m, resampled to 10 m; outside CH/LI: AWS Terrain Tiles (Mapzen/SRTM/EU-DEM)"
+}

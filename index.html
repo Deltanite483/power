@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Power — Liechtenstein</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  </head>
+  <body data-hud-mode="foot">
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-speed" viewBox="0 0 24 24"><path d="M4 17a8 8 0 1 1 16 0M12 17l4-6" /></symbol>
+        <symbol id="i-ground" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M3 20h18" /></symbol>
+        <symbol id="i-jump" viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M3 20h18" /></symbol>
+        <symbol id="i-sea" viewBox="0 0 24 24"><path d="M3 17l6-9 4 5 3-3 5 7M3 21c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0" /></symbol>
+        <symbol id="i-surface" viewBox="0 0 24 24"><path d="M3 20h18M7 20v-6M12 20V10M17 20v-6M7 14c-2 0-3-2-3-4 2 0 3 2 3 4zM12 10c-2 0-3-2-3-4 2 0 3 2 3 4zM17 14c2 0 3-2 3-4-2 0-3 2-3 4z" /></symbol>
+        <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z" /></symbol>
+        <symbol id="i-takeoff" viewBox="0 0 24 24"><path d="M12 21V5M6 11l6-6 6 6M4 3h16" /></symbol>
+        <symbol id="i-mouse-l" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="6" /><path d="M12 3v7H6.2z" class="solid" /></symbol>
+        <symbol id="i-mouse-r" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="6" /><path d="M12 3v7h5.8z" class="solid" /></symbol>
+        <symbol id="i-scroll" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="6" /><path d="M12 7v4" /></symbol>
+        <symbol id="i-key-q" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" /><path d="M10 8.5a3.5 3.5 0 1 0 0.01 0M12.5 14l3 3" /></symbol>
+        <symbol id="i-key-x" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 8 8 8m0-8-8 8"/></symbol>
+        <symbol id="i-punch" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3" /></symbol>
+        <symbol id="i-grab" viewBox="0 0 24 24"><path d="M7 11V6a1.5 1.5 0 0 1 3 0v5M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V5.5a1.5 1.5 0 0 1 3 0V12M16 9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-12 5l-2.5-3.5a1.5 1.5 0 0 1 2.4-1.8L7 14" /></symbol>
+        <symbol id="i-throw" viewBox="0 0 24 24"><path d="M5 19L19 5M9 5h10v10" /></symbol>
+        <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 4v14M6 12l6 6 6-6" /></symbol>
+        <symbol id="i-reach" viewBox="0 0 24 24"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4" /></symbol>
+      </defs>
+    </svg>
+    <div id="super-block-status" hidden role="img" aria-label="Super Block ready">
+      <svg viewBox="0 0 40 40" aria-hidden="true"><circle class="shield-track" cx="20" cy="20" r="18"/><circle class="shield-progress" cx="20" cy="20" r="18" pathLength="1"/><path class="shield-icon" d="M20 10 29 14v7c0 5-5 8-9 10-4-2-9-5-9-10v-7z"/></svg>
+    </div>
+    <div id="grab-escape" hidden role="img" aria-label="Escape progress">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle class="escape-track" cx="12" cy="12" r="10.5"/>
+        <circle class="escape-progress" cx="12" cy="12" r="10.5" pathLength="1"/>
+        <path d="M11 6H7v12h4m0-6h6m-2.5-2.5L17 12l-2.5 2.5"/>
+      </svg>
+      <span class="escape-instruction">MASH PUNCH TO BREAK FREE</span>
+    </div>
+    <div id="hit-feed" hidden></div>
+    <div id="labels"></div>
+    <div id="boom"></div>
+    <div id="punch-charge"></div>
+    <div id="underwater"></div>
+    <div id="hurt"></div>
+    <div id="hud-vignette"></div>
+    <div id="revive-status" hidden role="progressbar" aria-label="Revive progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <b id="revive-label"></b><div class="revive-track"><i id="revive-fill"></i></div><small id="revive-detail"></small>
+    </div>
+    <div id="hud" aria-label="Player status">
+      <div class="flight-interface">
+        <div id="orientation-effect" class="orientation-effect" role="img" aria-label="Orientation stable"><span class="orientation-ghost ghost-left"></span><span class="orientation-ghost ghost-right"></span></div>
+        <div id="ui-vitals" class="vitals">
+          <div class="vital">
+            <span>HEALTH</span><b id="ui-health">100</b>
+            <div class="vital-track"><i id="ui-health-fill"></i></div>
+            <small id="ui-revives">3 REVIVES LEFT</small><small id="ui-observer" hidden>OBSERVER MODE</small>
+          </div>
+          <div id="ui-foe-faora" class="vital foe" hidden>
+            <span>FAORA-UL</span><b>100</b><div class="vital-track"><i></i></div>
+            <small class="unit-revives">3 REVIVES LEFT</small>
+          </div>
+          <div id="ui-foe-anissa" class="vital foe" hidden>
+            <span>ANISSA</span><b>100</b><div class="vital-track"><i></i></div>
+            <small class="unit-revives">3 REVIVES LEFT</small>
+          </div>
+          <div id="ui-foe-beast" class="vital foe" hidden>
+            <span>BATTLE BEAST</span><b>100</b><div class="vital-track"><i></i></div>
+            <small class="unit-revives">3 REVIVES LEFT</small>
+          </div>
+          <div id="ui-foe-doomsday" class="vital foe" hidden>
+            <span>DOOMSDAY</span><b>100</b><div class="vital-track"><i></i></div>
+            <small class="unit-revives">3 REVIVES LEFT</small>
+          </div>
+          <div id="ui-foe-sukuna" class="vital foe" hidden>
+            <span>SUKUNA</span><b>600</b><div class="vital-track"><i></i></div>
+            <div class="vital-ce" role="meter" aria-label="Sukuna cursed energy" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+              <span>CE</span><b>100</b><div class="vital-ce-track"><i></i></div>
+            </div>
+            <small class="unit-revives">3 REVIVES LEFT</small>
+          </div>
+          <div id="ui-foe-gojo" class="vital foe" hidden>
+            <span>SATORU GOJO</span><b>600</b><div class="vital-track"><i></i></div>
+            <div class="vital-ce" role="meter" aria-label="Gojo cursed energy" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+              <span>CE</span><b>100</b><div class="vital-ce-track"><i></i></div>
+            </div>
+            <small class="unit-revives">3 REVIVES LEFT</small>
+          </div>
+        </div>
+        <div id="target-view" hidden aria-hidden="true"><b></b></div>
+        <div id="fighter-markers" aria-hidden="true">
+          <div id="marker-faora" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>FAORA-UL</b></span></div>
+          <div id="marker-anissa" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>ANISSA</b></span></div>
+          <div id="marker-beast" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>BATTLE BEAST</b></span></div>
+          <div id="marker-gojo" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>SATORU GOJO</b></span></div>
+          <div id="marker-sukuna" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>SUKUNA</b></span></div>
+          <div id="marker-doomsday" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>DOOMSDAY</b></span></div>
+        </div>
+        <div class="flight-heading fly-only"><span class="heading-rule"></span><span id="ui-heading">N · 000°</span><span class="heading-rule"></span><i></i></div>
+        <div class="flight-reticle"><span></span></div>
+        <div id="followup-cue" class="followup-cue">HOLD <kbd>R</kbd> TO RAM</div>
+        <svg id="flight-lock-cue" class="flight-lock-cue" viewBox="0 0 28 28" role="img" aria-label="Flight unavailable" aria-hidden="true"><path d="M14 23V5M8 11l6-6 6 6M4 24L24 4"/></svg>
+        <div id="ui-interaction" class="flight-interaction" hidden><span id="ui-target"></span><small id="ui-actions"></small></div>
+        <div id="ui-guard" class="guard-meter" aria-label="Guard charge"><div class="instrument-label">GUARD <span id="ui-guard-value">0</span></div><div class="charge-track"><i id="ui-guard-fill"></i></div><div id="ui-guard-result" class="guard-result"></div></div>
+        <div id="ui-charge" class="jump-charge foot-only"><div class="instrument-label">JUMP <span id="ui-charge-percent">0%</span></div><div class="charge-track"><i id="ui-charge-fill"></i></div><div class="charge-height"><span id="ui-jump-height">1</span> <small>M</small></div></div>
+        <div class="flight-instrument flight-speed fly-only"><div class="instrument-label">SPEED</div><div class="instrument-value"><span id="ui-speed">0</span><small>M/S</small></div><div class="mach-readout"><span>MACH</span><strong id="ui-mach">0.00</strong></div><div id="ui-speed-setting" class="speed-setting"><div class="instrument-detail">MAX <span id="ui-limit">0</span> M/S <span class="scroll-hint">↕ SCROLL</span></div><div id="ui-speed-levels" class="speed-levels"></div></div></div>
+        <div class="flight-instrument flight-altitude fly-only"><div class="instrument-label">ALTITUDE</div><div class="instrument-value"><span id="ui-altitude">0</span><small>M</small></div><div class="instrument-detail">ABOVE GROUND</div><div class="instrument-line"><i></i></div></div>
+        <div id="ui-falling" class="fall-instrument foot-only"><div class="instrument-label">DESCENT</div><div class="instrument-value"><span id="ui-fall-speed">0</span><small>M/S ↓</small></div><div class="instrument-detail"><span id="ui-fall-altitude">0</span> M TO GROUND</div><div class="instrument-line"><i></i></div></div>
+        <div id="ui-boost" class="boost-status fly-only"><i></i><span id="ui-boost-label">BOOST READY</span></div>
+      </div>
+      <svg id="hud-core" viewBox="-405 -405 810 810" aria-hidden="true">
+        <path class="hud-line" d="M-123.1 -338.3 A360 360 0 0 1 123.1 -338.3" />
+        <path class="hud-ticks" d="M-120.4 -330.8 A352 352 0 0 1 120.4 -330.8" />
+        <path class="hud-caret" d="M-6 -371 L0 -363 L6 -371" />
+        <text id="hud-heading" class="hud-mono" x="0" y="-376" text-anchor="middle">000°</text>
+        <text id="hud-card-N" class="hud-card" text-anchor="middle">N</text>
+        <text id="hud-card-E" class="hud-card" text-anchor="middle">E</text>
+        <text id="hud-card-S" class="hud-card" text-anchor="middle">S</text>
+        <text id="hud-card-W" class="hud-card" text-anchor="middle">W</text>
+
+        <path class="hud-line" d="M-294.4 170 A340 340 0 0 1 -294.4 -170" />
+        <path class="hud-ticks" d="M-287.5 166 A332 332 0 0 1 -287.5 -166" />
+        <path id="hud-speed-fill" class="hud-fill" d="M-294.4 170 A340 340 0 0 1 -294.4 -170" stroke-dasharray="0 400" />
+        <g class="fly-only">
+          <path class="hud-cap" d="M-282.3 -163 L-303.1 -175" />
+          <text id="hud-cap" class="hud-num-s hud-amber" x="-306" y="-188" text-anchor="end">0</text>
+        </g>
+        <use href="#i-speed" class="hud-icon" x="-268" y="-11" width="22" height="22" />
+        <text id="hud-speed" class="hud-num-l" x="-238" y="14">0</text>
+        <text class="hud-num-s hud-dim" x="-238" y="-19">KM/H</text>
+        <text id="hud-mach" class="hud-num-s" x="-238" y="40"></text>
+
+        <path id="hud-right-line" class="hud-line" d="M294.4 -170 A340 340 0 0 1 294.4 170" />
+        <path id="hud-right-ticks" class="hud-ticks" d="M287.5 -166 A332 332 0 0 1 287.5 166" />
+        <g class="fly-only">
+          <path id="hud-alt-caret" class="hud-amber-fill" d="M322 0 L312 -6 L312 6 Z" />
+          <g id="hud-ground-warn">
+            <text id="hud-agl-warn" class="hud-num-l hud-amber" x="240" y="14" text-anchor="end">0</text>
+          <text class="hud-num-s hud-amber" x="240" y="-19" text-anchor="end">GROUND · M</text>
+            <use href="#i-ground" class="hud-icon hud-amber" x="248" y="-11" width="22" height="22" />
+          </g>
+        </g>
+        <g class="foot-only">
+          <path id="hud-jump-fill" class="hud-fill hud-amber" d="M294.4 170 A340 340 0 0 0 294.4 -170" stroke-dasharray="0 400" />
+          <text id="hud-jump" class="hud-num-l hud-amber" x="240" y="14" text-anchor="end">0</text>
+          <text class="hud-num-s hud-amber" x="240" y="-19" text-anchor="end">JUMP · M</text>
+          <use href="#i-jump" class="hud-icon hud-amber" x="248" y="-11" width="22" height="22" />
+        </g>
+
+        <g class="fly-only">
+          <circle class="hud-line hud-faint" r="40" />
+          <circle id="hud-boost" class="hud-boost" r="40" transform="rotate(-90)" stroke-dasharray="251 251" />
+          <path class="hud-line" d="M-120 0h50M70 0h50M0 -48v10M0 38v10" />
+          <use href="#i-bolt" class="hud-icon hud-amber" x="-8" y="53" width="16" height="16" />
+        </g>
+        <path class="hud-line foot-only" d="M-40 0h24M16 0h24" />
+        <circle class="hud-dot" r="2.5" />
+
+        <g id="hud-prompt" display="none">
+          <text id="hud-prompt-name" class="hud-num-s hud-dim" x="0" y="50" text-anchor="middle"></text>
+          <g id="hud-prompt-aim">
+            <g id="hud-prompt-punch">
+            <use href="#i-mouse-l" class="hud-icon" x="-45" y="62" width="18" height="18" />
+            <use href="#i-punch" class="hud-icon hud-amber" x="-25" y="62" width="18" height="18" />
+            </g>
+            <use href="#i-mouse-r" class="hud-icon" x="7" y="62" width="18" height="18" />
+            <use href="#i-grab" class="hud-icon" x="27" y="62" width="18" height="18" />
+          </g>
+          <g id="hud-prompt-hold">
+            <use href="#i-mouse-r" class="hud-icon" x="-75" y="62" width="18" height="18" />
+            <use href="#i-throw" class="hud-icon hud-amber" x="-55" y="62" width="18" height="18" />
+            <use href="#i-key-x" class="hud-icon" x="-20" y="62" width="18" height="18" />
+            <use href="#i-drop" class="hud-icon" x="0" y="62" width="18" height="18" />
+            <use href="#i-scroll" class="hud-icon" x="37" y="62" width="18" height="18" />
+            <use href="#i-reach" class="hud-icon" x="57" y="62" width="18" height="18" />
+          </g>
+        </g>
+      </svg>
+
+      <div id="hud-readouts">
+        <div class="fly-only"><svg role="img" aria-label="Above ground"><use href="#i-ground" /></svg><span id="hud-agl">0</span><small>m</small></div>
+        <div><svg role="img" aria-label="Above sea level"><use href="#i-sea" /></svg><span id="hud-msl">0</span><small>m</small></div>
+        <div class="foot-only"><svg role="img" aria-label="Surface"><use href="#i-surface" /></svg><span id="hud-surface" class="hud-word"></span></div>
+      </div>
+
+      <div id="hud-cues">
+        <span class="foot-only hud-cue-fly"><kbd>E</kbd><svg role="img" aria-label="Take flight"><use href="#i-takeoff" /></svg></span>
+        <span class="fly-only hud-cue-fly"><kbd>E</kbd><svg role="img" aria-label="Stop flying"><use href="#i-drop" /></svg></span>
+        <span><kbd>Q</kbd><svg role="img" aria-label="Momentum brake"><use href="#i-punch" /></svg></span>
+        <span><kbd>?</kbd><span class="visually-hidden">Controls</span></span>
+      </div>
+    </div>
+    <div id="gauge"></div>
+    <div id="minimap">
+      <canvas id="minimap-canvas"></canvas>
+      <svg viewBox="0 0 240 240" aria-hidden="true">
+        <circle cx="120" cy="120" r="111" class="mm-ring" />
+        <circle cx="120" cy="120" r="116" class="mm-ticks" />
+        <circle cx="120" cy="120" r="55" class="mm-inner" />
+        <path d="M120 106 L129 128 L120 122 L111 128 Z" class="mm-player" />
+      </svg>
+      <span id="minimap-north">N</span>
+    </div>
+    <aside id="hud-guide" aria-label="Controls" hidden>
+      <div>
+        <h2>Explore &amp; move</h2>
+        <p><kbd>Mouse</kbd> Look <span>·</span> <kbd>W A S D</kbd> Move</p>
+        <p id="hud-move-guide"></p>
+        <h2>Shape the landscape</h2>
+        <p><kbd>Hold left click</kbd> Charge punch <span>·</span> <kbd>Hold right click</kbd> Charge guard <span>·</span> <kbd>Shift</kbd> Charge faster <span>·</span> <kbd>F</kbd> Grab / throw <span>·</span> <kbd>X</kbd> Drop <span>·</span> <kbd>Q</kbd> Momentum brake <span>·</span> <kbd>Scroll</kbd> Adjust grab reach</p>
+        <p>Fly into terrain to carve craters and trenches. Roads, concrete buildings and trees are world voxels: punch or fly through them to carve holes.</p>
+        <p>Punch nearby clouds (within 8 m) to blast local holes; fast flight cuts wider tunnels. Openings drift with the cloud and slowly close.</p>
+        <p><kbd>[</kbd> / <kbd>]</kbd> Halve / double destruction power</p>
+        <p><kbd>H</kbd> Toggle terrain healing</p>
+        <h2>Find your way</h2>
+        <p>Faora-Ul flies with you. Use the pause-menu Friend / Foe roster to set behavior; <kbd>B</kbd> toggles her Foe assignment. Press G to call all deployed friends to you; find her cyan marker on the map.</p>
+        <p>Light unguarded hits only stagger: a shove and a flinch. Only solid hits send anyone flying. Bedrock 2 m below the ground can't be broken.</p>
+        <p><kbd>M</kbd> Expand map <span>·</span> <kbd>Esc</kbd> Release mouse</p>
+        <p><kbd>B</kbd> Toggle Faora enemy mode <span>·</span> <kbd>N</kbd> Summon / dismiss Anissa</p>
+        <p><kbd>R</kbd> Tap to lock onto the nearest enemy or unlock; hold to home in and land a double-fist ram · block cuts ram damage</p>
+        <p>Hits reduce health and orientation. The visual disturbance fades as you stabilize; wait for the crossed-out flight icon to clear before flying again. Health regenerates continuously while you are alive, even in combat. With Persistence Mode off, zero HP leaves you downed: a teammate can revive you to 40 HP, up to three times. Mash left click to self-revive, or hold T near a downed friend to help. The fourth defeat is final; Retry / Resummon starts a new life. Enable Persistence Mode in pause for automatic returns after 25 seconds at 75% HP. Everyone gets six seconds of protection after revival.</p>
+      </div>
+    </aside>
+    <div id="map"><canvas id="map-canvas"></canvas></div>
+    <a id="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors · ODbL</a>
+    <div id="overlay">
+      <h1>POWER</h1>
+      <p id="status">Loading…</p>
+      <nav id="map-select" aria-label="Map">
+        <a id="map-vaduz" href="?map=vaduz">Vaduz</a>
+        <a id="map-manhattan" href="?map=manhattan">Midtown Manhattan</a>
+        <a id="map-manhattan-island" href="?map=manhattan-island">Manhattan Island</a>
+      </nav>
+      <button id="resume-game" type="button" disabled>Play</button>
+      <section id="pause-actions" aria-label="Recovery">
+        <button id="revive-player" type="button" disabled>Heal YOU · 100 HP</button>
+        <button id="retry-player" type="button" hidden>Retry</button>
+      </section>
+      <section id="fighter-roster" aria-label="Character roster">
+        <div class="roster-title"><h2>Roster</h2><p>Friends fight beside you. Foes hunt you and your friends. Drag a card across or use its buttons. Revive anyone at full health, even after final defeat.</p></div>
+        <div class="roster-columns">
+          <div class="roster-column" data-side="friend"><h3>Friend <span class="roster-count"></span></h3><div class="roster-list"></div></div>
+          <div class="roster-column" data-side="foe"><h3>Foe <span class="roster-count"></span></h3><div class="roster-list"></div></div>
+        </div>
+      </section>
+      <section id="game-modes" aria-label="Game modes">
+        <label for="persistence-mode"><input id="persistence-mode" type="checkbox" /> Persistence Mode</label>
+        <p>You and friends return automatically after 25 seconds at 75% health, with unlimited returns. Enemies keep their normal revive limit.</p>
+        <label for="observer-mode"><input id="observer-mode" type="checkbox" /> Observer Mode</label>
+        <p>Enemies ignore you and continue fighting other fighters.</p>
+      </section>
+      <section id="audio-controls" aria-label="Audio controls">
+        <div class="audio-heading"><label for="master-volume">Master volume</label><output id="master-volume-value" for="master-volume">80%</output></div>
+        <div class="audio-inputs"><input id="master-volume" type="range" min="0" max="100" step="1" value="80" aria-describedby="volume-shortcuts" /><button id="master-mute" type="button" aria-pressed="false">Mute</button></div>
+        <p id="volume-shortcuts"><kbd>−</kbd> / <kbd>+</kbd> Volume <span>·</span> <kbd>V</kbd> Mute</p>
+      </section>
+      <details id="pause-controls"><summary>Controls</summary><table class="keys">
+        <tr><td>Mouse</td><td>look</td></tr>
+        <tr><td>W A S D</td><td>move · in flight: W/S thrust · W + A/D turn · A/D without W strafe · high-speed turns are wide</td></tr>
+        <tr><td>Arrow keys</td><td>in flight: swerve left/right · pitch up/down</td></tr>
+        <tr><td>E</td><td>toggle flight (momentum carries when you switch off)</td></tr>
+        <tr><td>Space</td><td>hold to charge, release to jump: a tap hops 1 m, a full charge takes 4.5 seconds and leaps 1800 m · in flight: up</td></tr>
+        <tr><td>Scroll ↑ / ↓</td><td>in flight: top speed (5 → 400 m/s) · accelerate to reach it</td></tr>
+        <tr><td>W + Space</td><td>big jumps launch you forward</td></tr>
+        <tr><td>Shift</td><td>run · tap repeatedly while charging a jump to charge faster · in flight: boost toward your view (0.5 s cooldown; unavailable at Mach 2.5 or above)</td></tr>
+        <tr><td>C</td><td>crouch · in the air (not flying): ground pound · in flight: down</td></tr>
+        <tr><td>Punch at speed</td><td>momentum toward your target adds power: a fast fly-by tap lands like a charged smash</td></tr>
+        <tr><td>1 – 6</td><td>flight top speed presets</td></tr>
+        <tr><td>Left / right click</td><td>hold left to charge a punch, or press right to cancel your current action and hold to charge a guard (3× healing while guarding) · release left to punch · Shift charges either twice as fast</td></tr>
+        <tr><td>F</td><td>grab / throw · held objects keep their weight and collide</td></tr>
+        <tr><td>Q</td><td>halt all momentum with flight; release a shockwave along your previous motion, stronger at higher speed · Q + punch charges a kick (2× punch damage); release left click to kick · Q + block activates Super Block: 3 seconds impervious, then 2 seconds cooldown</td></tr>
+        <tr><td>X / Scroll</td><td>while grabbing: drop / adjust reach</td></tr>
+        <tr><td>G</td><td>call all deployed friends to you (they break off fights for a few seconds) · friend markers on the map</td></tr>
+        <tr><td>Y</td><td>deploy / dismiss Satoru Gojo</td></tr>
+        <tr><td>M</td><td>deploy / dismiss Sukuna · dodge Dismantle, block Cleave, leave the red circle to escape Malevolent Shrine, and move away from Fuga’s impact point</td></tr>
+        <tr><td>K</td><td>deploy / dismiss Doomsday · charged beam, energy nova, regeneration and bone-spiked melee · use pause to assign Friend / Foe</td></tr>
+        <tr><td>J</td><td>deploy / dismiss Battle Beast — set Friend / Foe in pause</td></tr>
+        <tr><td>B / N</td><td>toggle Faora Friend / Foe / deploy or dismiss Anissa</td></tr>
+        <tr><td>R</td><td>tap to lock or unlock; hold to home in and ram with both fists · impact releases a shockwave · block cuts damage</td></tr>
+        <tr><td>Recovery</td><td>solid hits interrupt flight, light ones just stagger · orientation recovers after a brief break from hits and health regenerates continuously · three revives to 40 HP, then final defeat · mash left click while downed · hold T to revive a friend</td></tr>
+        <tr><td>Fly / punch clouds</td><td>fast passes cut tunnels · left click blasts nearby cloud (8 m reach) · openings slowly close</td></tr>
+        <tr><td>Fly into terrain</td><td>shallow hits skip · direct hits dig in · ground contact tears trenches · nothing digs past bedrock 2 m down</td></tr>
+        <tr><td>[ / ]</td><td>destruction power ÷2 / ×2</td></tr>
+        <tr><td>H</td><td>toggle terrain healing</td></tr>
+        <tr><td>M</td><td>big map</td></tr>
+        <tr><td>O / P</td><td>show performance tracker / export session report</td></tr>
+        <tr><td>Esc</td><td>release mouse</td></tr>
+      </table></details>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

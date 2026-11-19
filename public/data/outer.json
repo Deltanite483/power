@@ -1,0 +1,19 @@
+{
+ "width": 800,
+ "height": 800,
+ "cell_m": 100.0,
+ "min_m": 388.42578125,
+ "max_m": 3172.01171875,
+ "step_m": 0.05,
+ "origin_x": -40000.0,
+ "origin_z": -40000.0,
+ "lv95_origin": [
+  2757539.35767206,
+  1224128.120884654
+ ],
+ "origin_latlon": [
+  47.14936,
+  9.515999
+ ],
+ "source": "AWS Terrain Tiles (Mapzen/SRTM/EU-DEM), zoom 11"
+}

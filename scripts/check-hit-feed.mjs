@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import {createServer} from 'vite';
+import * as THREE from 'three';
+const server=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom'});
+try {
+  const {HitFeedModel}=await server.ssrLoadModule('/src/hit-feed.ts');
+  const model=new HitFeedModel();
+  const hit={source:{name:'Doomsday',team:'foe',action:'beam'},victim:{name:'YOU',team:'player'},damage:1.2,outcome:'hit'};
+  model.add(hit);model.update(.16);model.add(hit);
+  assert.equal(model.entries.length,1);assert.equal(model.entries[0].count,2);assert.equal(model.entries[0].damage,2.4);
+  model.add({...hit,outcome:'down'});assert.equal(model.entries[0].outcome,'down');
+  model.add(hit);assert.equal(model.entries.length,2,'post-revive beam starts a new row');
+  model.add({...hit,source:{...hit.source,action:'punch'}});model.add({...hit,source:{...hit.source,action:'punch'}});
+  assert.equal(model.entries.length,4,'individual punches do not merge');
+  model.add({...hit,damage:NaN});model.add({...hit,damage:0});assert.equal(model.entries.length,4);
+  for(let i=0;i<12;i++)model.add({...hit,source:{...hit.source,action:'slam'}});
+  assert.equal(model.entries.length,6,'bounded DOM rows');model.update(6);assert.equal(model.entries.length,0);
+  globalThis.addEventListener=()=>{};globalThis.document={addEventListener(){},pointerLockElement:null};
+  const {Player}=await server.ssrLoadModule('/src/player.ts');
+  const player=new Player({},{}),events=[];player.onCombatHit=e=>events.push(e);
+  player.receiveHit(100,.04,hit.source);assert.equal(events.length,1);assert(Math.abs(events[0].damage-.96)<1e-9,'actual beam HP, after damage scaling');
+  player.vitals.health=1;player.receiveHit(100,1,hit.source);assert.equal(events[1].damage,1);assert.equal(events[1].outcome,'down');
+  player.receiveHit(100,1,hit.source);assert.equal(events.length,2,'downed bodies do not generate hits');
+  player.vitals.reset();player.vitals.revivesUsed=3;player.receiveHit(100,10,hit.source);assert.equal(events[2].outcome,'out');
+  const {Faora}=await server.ssrLoadModule('/src/faora.ts');
+  const world={spans:()=>({top:0,floor:()=>0,ceil:()=>Infinity,solid:()=>false}),materialAt:()=>({name:'soil',bounce:0}),crater(){},launch(){}};
+  const doom=new Faora(world,new THREE.Scene(),'Doomsday');doom.spawn(0,0);let received=[];doom.onCombatHit=e=>received.push(e);
+  doom.strike(new THREE.Vector3(1,0,0),new THREE.Vector3(),30,true,20,1,{name:'YOU',team:'player',action:'punch'});
+  assert.equal(received.length,1);assert.equal(received[0].source.name,'YOU');assert(Math.abs(received[0].damage-100+doom.vitals.health)<1e-9);
+  Object.defineProperty(doom,"blocking",{get:()=>true});doom.defense.defend=()=>0;
+  doom.strike(new THREE.Vector3(1,0,0),new THREE.Vector3(),30,true,20);assert.equal(received.length,1,'fully blocked hits produce no feed event');
+  console.log('Hit feed: damage attribution, scaled HP, blocked/downed filtering, outcomes, grouping, bounds and expiry passed.');
+}finally{await server.close();}
