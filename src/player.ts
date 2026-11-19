@@ -540,8 +540,8 @@ export class Player {
       this.bob += (dt * hs) / THREE.MathUtils.lerp(STEP_WALK, STEP_RUN, run);
       if (Math.floor(this.bob) !== before) this.onStep(this.material, hs);
     }
-    if (this.flying) this.roll += (THREE.MathUtils.clamp(this.key("KeyA") - this.key("KeyD") + this.key("ArrowLeft") - this.key("ArrowRight"), -1, 1) * 0.28 - this.roll) * (1 - Math.exp(-4 * dt));
-    else this.roll *= 1 - Math.min(1, 6 * dt);
+    // No camera bank when swerving or turning; any leftover roll settles back to level.
+    this.roll *= 1 - Math.min(1, 6 * dt);
   }
 
   /** Unit vector of the held movement keys (camera-relative, including up/down), zero if none. */

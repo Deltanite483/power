@@ -7,7 +7,7 @@ const KEYS: Record<string, string> = {
 /** Pause-menu Friend / Foe board. Drag a card across, or use its buttons. */
 export function setupRoster(fighters: readonly Faora[], active: (fighter: Faora) => boolean,
   deploy: (fighter: Faora, enabled: boolean) => void, revive: (fighter: Faora) => void,
-  changed: () => void,persistence:()=>boolean=()=>false) {
+  changed: () => void,persistence:(foe:boolean)=>boolean=()=>false) {
   const root = document.getElementById('fighter-roster')!;
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text = '') => {
     const node = document.createElement(tag); node.className = className; if (text) node.textContent = text; return node;
@@ -21,7 +21,7 @@ export function setupRoster(fighters: readonly Faora[], active: (fighter: Faora)
       list.replaceChildren();
       if (!members.length) list.append(el('p', 'roster-empty', 'Drag a fighter here'));
       for (const fighter of members) {
-        const deployed = active(fighter), defeated = fighter.vitals.defeated, automatic = !foe && persistence();
+        const deployed = active(fighter), defeated = fighter.vitals.defeated, automatic = persistence(foe);
         const card = el('article', 'roster-card');
         card.classList.toggle('dismissed', !deployed);
         card.classList.toggle('defeated', defeated);

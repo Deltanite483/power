@@ -71,12 +71,12 @@
         </div>
         <div id="target-view" hidden aria-hidden="true"><b></b></div>
         <div id="fighter-markers" aria-hidden="true">
-          <div id="marker-faora" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>FAORA-UL</b></span></div>
-          <div id="marker-anissa" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>ANISSA</b></span></div>
-          <div id="marker-beast" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>BATTLE BEAST</b></span></div>
-          <div id="marker-gojo" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>SATORU GOJO</b></span></div>
-          <div id="marker-sukuna" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>SUKUNA</b></span></div>
-          <div id="marker-doomsday" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>DOOMSDAY</b></span></div>
+          <div id="marker-faora" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>FAORA-UL</b><small></small></span></div>
+          <div id="marker-anissa" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>ANISSA</b><small></small></span></div>
+          <div id="marker-beast" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>BATTLE BEAST</b><small></small></span></div>
+          <div id="marker-gojo" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>SATORU GOJO</b><small></small></span></div>
+          <div id="marker-sukuna" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>SUKUNA</b><small></small></span></div>
+          <div id="marker-doomsday" class="fighter-marker" hidden><span class="marker-arrow">▲</span><span class="marker-diamond"></span><span class="marker-text"><b>DOOMSDAY</b><small></small></span></div>
         </div>
         <div class="flight-heading fly-only"><span class="heading-rule"></span><span id="ui-heading">N · 000°</span><span class="heading-rule"></span><i></i></div>
         <div class="flight-reticle"><span></span></div>
@@ -108,7 +108,6 @@
             </div>
             <section id="game-modes" class="pause-panel" aria-label="Game modes">
               <h2>Modes</h2>
-              <label for="persistence-mode" title="You and friends come back after 25 s at 75% health, forever."><input id="persistence-mode" type="checkbox" /><span>Persistence<small>Auto-return after 25 s</small></span></label>
               <label for="observer-mode" title="Enemies ignore you and fight each other."><input id="observer-mode" type="checkbox" /><span>Observer<small>Enemies ignore you</small></span></label>
             </section>
             <section id="audio-controls" class="pause-panel" aria-label="Audio">
@@ -119,8 +118,10 @@
           <section id="fighter-roster" class="pause-panel" aria-label="Fighters">
             <h2>Fighters</h2>
             <div class="roster-columns">
-              <div class="roster-column" data-side="friend"><h3>Friends <span class="roster-count"></span></h3><div class="roster-list"></div></div>
-              <div class="roster-column" data-side="foe"><h3>Foes <span class="roster-count"></span></h3><div class="roster-list"></div></div>
+              <div class="roster-column" data-side="friend"><h3>Friends <span class="roster-count"></span></h3><div class="roster-list"></div>
+                <label class="roster-persist" for="persist-friends" title="You and your friends come back after 25 s at 75% health, with no revive limit."><input id="persist-friends" type="checkbox" /><span>Persistence<small>You + friends return after 25 s</small></span></label></div>
+              <div class="roster-column" data-side="foe"><h3>Foes <span class="roster-count"></span></h3><div class="roster-list"></div>
+                <label class="roster-persist" for="persist-foes" title="Foes come back after 25 s at 75% health, with no revive limit."><input id="persist-foes" type="checkbox" /><span>Persistence<small>Foes return after 25 s</small></span></label></div>
             </div>
           </section>
         </div>

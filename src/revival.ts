@@ -82,20 +82,24 @@ export class SelfRevive {
 }
 
 export const PERSISTENCE_DELAY=25;
-/** Optional friendly auto-return, independent of the normal three-use revival budget. */
+/** Optional auto-return, set separately for your side (you + friends) and for foes. Independent of the revive budget. */
 export class PersistenceMode {
+  /** Your side: you and friendly fighters. */
   enabled=false;
+  foes=false;
   private timers=new Map<string,number>();
   setEnabled(enabled:boolean){if(enabled!==this.enabled){this.enabled=enabled;this.clear();}}
+  setFoes(enabled:boolean){if(enabled!==this.foes){this.foes=enabled;this.clear();}}
+  covers(enemy:boolean){return enemy?this.foes:this.enabled;}
   clear(){this.timers.clear();}
   forget(id:string){this.timers.delete(id);}
   remainingFor(id:string){return this.timers.get(id)??PERSISTENCE_DELAY;}
   progressFor(id:string){return 1-this.remainingFor(id)/PERSISTENCE_DELAY;}
   update(dt:number,units:RescueUnit[]){
-    if(!this.enabled){this.clear();return;}
+    if(!this.enabled && !this.foes){this.clear();return;}
     const valid=new Set<string>();
     for(const unit of units){
-      if(unit.enemy || !unit.vitals.defeated)continue;
+      if(!this.covers(unit.enemy) || !unit.vitals.defeated)continue;
       valid.add(unit.id);
       const remaining=Math.max(0,this.remainingFor(unit.id)-Math.max(0,dt));
       this.timers.set(unit.id,remaining);

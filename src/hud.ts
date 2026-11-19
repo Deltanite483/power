@@ -6,6 +6,10 @@ import type { Faora } from "./faora";
 import { projectMarker } from "./markers";
 import { renderControls } from "./controls";
 
+// A place counts as "ahead" within ~20° of your horizontal flight path, once you're actually moving.
+const FLY_TOWARD_COS = Math.cos(20 * Math.PI / 180);
+const FLY_TOWARD_SPEED = 8;
+
 interface Label {
   place: Place;
   el: HTMLDivElement;
@@ -36,7 +40,8 @@ export class Hud {
   private occlusionCursor = 0;
   private v = new THREE.Vector3();
   shake = 0;
-  persistenceMode = false;
+  /** Whether auto-return covers this side (false = you and friends, true = foes). */
+  persists: (enemy: boolean) => boolean = () => false;
   onSonicBoom: () => void = () => {};
   private gauge = $("gauge");
   private gaugeTimer = 0;
@@ -61,15 +66,15 @@ export class Hud {
       if (!e.repeat && e.key === "?") this.guide.hidden = !this.guide.hidden;
     });
 
-    const wantKinds = new Set(["town", "village", "peak", "castle", "landmark"]);
+    const wantKinds = new Set(["town", "village", "castle", "landmark"]);
     for (const p of [...world.places, ...landmarks]) {
       if (!wantKinds.has(p.kind) || p.tier > 2) continue;
       const el = document.createElement("div");
       el.className = `label ${p.kind}`;
-      el.textContent = p.kind === "peak" ? `▲ ${p.name} ${Math.round(p.ele)} m` : p.name;
+      el.textContent = p.name;
       this.labelsEl.appendChild(el);
-      const y = Math.max(p.ele, hf.height(p.x, p.z, 10)) + (p.kind === "landmark" ? 3 : p.kind === "peak" ? 25 : 60);
-      const range = p.kind === "landmark" ? 1250 : p.kind === "peak" ? 12000 : p.kind === "castle" ? 6500 : 10000;
+      const y = Math.max(p.ele, hf.height(p.x, p.z, 10)) + (p.kind === "landmark" ? 3 : 60);
+      const range = p.kind === "landmark" ? 1250 : p.kind === "castle" ? 6500 : 10000;
       this.labels.push({ place: p, el, y, range, hidden: false, width: 0 });
     }
   }
@@ -109,10 +114,12 @@ export class Hud {
       const marker = $(id);
       marker.hidden = !fighter || (visible !== undefined && !visible(fighter));
       if (marker.hidden || !fighter) continue;
-      this.set(marker.querySelector(".marker-text b")!, `${fighter.name.toUpperCase()}${this.persistenceMode && !fighter.enemyMode && fighter.vitals.defeated?" · RETURNING":fighter.vitals.downed?" · DOWN":fighter.vitals.eliminated?" · OUT":""}`);
+      this.set(marker.querySelector(".marker-text b")!, `${fighter.name.toUpperCase()}${this.persists(fighter.enemyMode) && fighter.vitals.defeated?" · RETURNING":fighter.vitals.downed?" · DOWN":fighter.vitals.eliminated?" · OUT":""}`);
       if (fighter.ragdoll.active) this.markerPoint.copy(fighter.ragdoll.joints[2]).y += .35;
       else this.markerPoint.copy(fighter.pos).y += 2.25 * fighter.bodyScale;
       const screen = projectMarker(camera, this.markerPoint, innerWidth, innerHeight);
+      const metres = camera.position.distanceTo(this.markerPoint);
+      this.set(marker.querySelector(".marker-text small")!, metres < 1000 ? `${Math.round(metres)} m` : `${(metres / 1000).toFixed(metres < 10000 ? 1 : 0)} km`);
       marker.style.transform = `translate(${screen.x.toFixed(1)}px, ${screen.y.toFixed(1)}px) translate(-50%, -50%)`;
       marker.classList.toggle("offscreen", screen.offscreen);
       marker.classList.toggle("hostile", fighter.hostile);
@@ -149,7 +156,7 @@ export class Hud {
     const formatHealth = ({ health, frozen }: Player["vitals"]) => `${frozen ? Number(health.toFixed(2)) : Math.ceil(health)}`;
     this.set($("ui-health"), formatHealth(player.vitals));
     $("ui-health-fill").style.transform = `scaleX(${player.vitals.healthFraction})`;
-    this.set($("ui-revives"), this.reviveNote(player.vitals, this.persistenceMode));
+    this.set($("ui-revives"), this.reviveNote(player.vitals, this.persists(false)));
     for (const [id, fighter] of [["ui-foe-faora", this.companion], ["ui-foe-anissa", this.opponent], ["ui-foe-beast", this.beast],["ui-foe-doomsday",this.doomsday], ["ui-foe-sukuna", this.sukuna], ["ui-foe-gojo", this.gojo]] as const) {
       const bar = $(id), locked = !!fighter && fighter === this.lockedTarget;
       const friend = !!fighter && !fighter.enemyMode;
@@ -158,10 +165,10 @@ export class Hud {
       bar.classList.toggle("friend", friend);
       bar.classList.toggle("foe", !friend);
       this.set(bar.querySelector("span")!, fighter.name.toUpperCase());
-      this.set(bar.querySelector("small")!, this.reviveNote(fighter.vitals, this.persistenceMode && !fighter.enemyMode));
-      bar.classList.toggle("downed",fighter.vitals.defeated && (fighter.vitals.downed || this.persistenceMode && !fighter.enemyMode));
+      this.set(bar.querySelector("small")!, this.reviveNote(fighter.vitals, this.persists(fighter.enemyMode)));
+      bar.classList.toggle("downed",fighter.vitals.defeated && (fighter.vitals.downed || this.persists(fighter.enemyMode)));
       bar.classList.toggle("locked", locked);
-      this.set(bar.querySelector("b")!, this.persistenceMode && !fighter.enemyMode && fighter.vitals.defeated?"DOWN":fighter.vitals.downed?"DOWN":fighter.vitals.eliminated?"OUT":formatHealth(fighter.vitals));
+      this.set(bar.querySelector("b")!, this.persists(fighter.enemyMode) && fighter.vitals.defeated?"DOWN":fighter.vitals.downed?"DOWN":fighter.vitals.eliminated?"OUT":formatHealth(fighter.vitals));
       bar.querySelector<HTMLElement>(".vital-track i")!.style.transform = `scaleX(${fighter.vitals.healthFraction})`;
       const ceBar = bar.querySelector<HTMLElement>(".vital-ce");
       const energy = fighter.cursedEnergy;
@@ -240,10 +247,17 @@ export class Hud {
 
   updateNavigation(player: Player, camera: THREE.PerspectiveCamera, playing: boolean) {
     if (!this.labels.length) return;
-    this.labelsEl.hidden = !playing || player.underwater;
-    if (this.labelsEl.hidden) return;
+    // Place names only appear while flying, for the places you're heading toward.
+    const heading = this.v.set(player.vel.x, 0, player.vel.z);
+    const moving = heading.lengthSq() > FLY_TOWARD_SPEED ** 2;
+    this.labelsEl.hidden = !playing || player.underwater || !player.flying || !moving;
+    if (this.labelsEl.hidden) {
+      for (const label of this.labels) label.el.classList.remove("visible");
+      return;
+    }
+    heading.normalize();
+    const hx = heading.x, hz = heading.z;
     const w = innerWidth, h = innerHeight;
-    const airborne = player.flying || player.altitudeAGL > 60;
     const candidates: { label: Label; x: number; y: number; score: number; opacity: number }[] = [];
     for (let i = 0; i < 12 && this.labels.length; i++) {
       const l = this.labels[this.occlusionCursor++ % this.labels.length];
@@ -251,20 +265,24 @@ export class Hud {
     }
     for (const label of this.labels) {
       const { place, y, hidden } = label;
-      const landmark = place.kind === "landmark", peak = place.kind === "peak";
-      if (hidden || (!airborne && !landmark)) continue;
+      if (hidden) continue;
+      const dx = place.x - player.pos.x, dz = place.z - player.pos.z;
+      const flat = Math.hypot(dx, dz);
+      if (flat < 30) continue;
+      const toward = (dx * hx + dz * hz) / flat; // cosine between travel and the place
+      if (toward < FLY_TOWARD_COS) continue;
       const point = this.v.set(place.x, y, place.z);
       const distance = point.distanceTo(camera.position);
-      const range = label.range * (airborne ? 1 + THREE.MathUtils.clamp((camera.position.y - 1500) / 3500, 0, .75) : .22);
-      if (distance > range || distance < 6) continue;
+      const range = label.range * (1 + THREE.MathUtils.clamp((camera.position.y - 1500) / 3500, 0, .75));
+      if (distance > range) continue;
       point.project(camera);
       if (point.z < -1 || point.z > 1 || Math.abs(point.x) >= 1 || Math.abs(point.y) >= 1) continue;
       const x = (point.x + 1) * w * .5, screenY = (1 - point.y) * h * .5;
-      const priority = landmark || place.kind === "castle" ? 3 : peak ? 0 : 1.5;
-      const opacity = THREE.MathUtils.smoothstep(1 - distance / range, 0, .4) * (peak ? .73 : .94);
+      const aim = THREE.MathUtils.smoothstep(toward, FLY_TOWARD_COS, 1);
+      const opacity = THREE.MathUtils.smoothstep(1 - distance / range, 0, .4) * aim * .94;
       if (opacity < .08) continue;
       if (label.width === 0) label.width = label.el.offsetWidth;
-      candidates.push({ label, x, y: screenY, score: priority - distance / range + (label.el.classList.contains("visible") ? .075 : 0), opacity });
+      candidates.push({ label, x, y: screenY, score: aim - distance / range + (label.el.classList.contains("visible") ? .075 : 0), opacity });
     }
 
     const blocked: LabelBounds[] = [
@@ -275,17 +293,14 @@ export class Hud {
       if (box?.width && box.height) blocked.push(box);
     }
     const shown = new Set<Label>();
-    let peaks = 0;
     candidates.sort((a, b) => b.score - a.score);
     for (const { label, x, y, opacity } of candidates) {
-      const peak = label.place.kind === "peak";
-      if (shown.size >= (w < 740 ? 5 : 8) || (peak && peaks >= (w < 740 ? 2 : 4))) continue;
+      if (shown.size >= 3) continue;
       const bounds = { left: x - label.width / 2, right: x + label.width / 2, top: y - 17, bottom: y };
       if (bounds.left < 16 || bounds.right > w - 16 || bounds.top < 18 || bounds.bottom > h - 24
         || blocked.some(other => intersects(bounds, other, 10))) continue;
       shown.add(label);
       blocked.push(bounds);
-      if (peak) peaks++;
       label.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
       label.el.style.setProperty("--label-opacity", opacity.toFixed(2));
     }

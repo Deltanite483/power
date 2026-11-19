@@ -30,7 +30,6 @@ canvas { display: block; }
   opacity: 0; transition: opacity 140ms ease-out;
 }
 .label.visible { opacity: var(--label-opacity, .85); }
-.label.peak { font-weight: 500; font-size: 11px; color: #e9f1ff; }
 .label.town, .label.village { color: #ffe9a8; }
 .label.castle, .label.landmark { color: #ffe1b7; }
 
@@ -430,3 +429,9 @@ body.super-block-active::after { content:""; position:fixed; inset:0; z-index:5;
   #status { text-align: left; }
 }
 @media (max-width: 480px) { .roster-columns { grid-template-columns: 1fr; } }
+.marker-text small { font: 500 9px/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: .04em; opacity: .7; }
+.roster-persist { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 10px; border: 1px solid #ffffff12; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; }
+.roster-persist:hover { border-color: color-mix(in srgb, var(--side) 45%, transparent); }
+.roster-persist span { display: grid; }
+.roster-persist small { font-size: 10px; font-weight: 400; color: var(--ui-dim); }
+.roster-persist input { width: 15px; height: 15px; margin: 0; accent-color: var(--side); }

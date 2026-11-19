@@ -217,12 +217,15 @@ async function main() {
   let encounterStarted = false;
   const combat = new Combat();
   const revivals=new RevivalSystem(),selfRevive=new SelfRevive(),persistence=new PersistenceMode();
-  try{persistence.setEnabled(localStorage.getItem("power.persistence")==="true");}catch{}
-  hud.persistenceMode=persistence.enabled;
+  try{
+    persistence.setEnabled(localStorage.getItem("power.persistence")==="true");
+    persistence.setFoes(localStorage.getItem("power.persistence.foes")==="true");
+  }catch{}
+  hud.persists=enemy=>persistence.covers(enemy);
   const hitFeed=new HitFeed(document.getElementById("hit-feed")!);
   const sourceFor=(fighter:Faora,action:HitAction):HitSource=>({name:fighter.name,team:fighter.enemyMode?"foe":"friend",action});
   const anissaGrab = new AnissaGrab(anissa,player,action=>sourceFor(anissa,action));
-  const logHit=(hit:DamageHit,name:string,team:HitTeam)=>hitFeed.add({...hit,victim:{name,team},outcome:hit.outcome==="out" && persistence.enabled && team!=="foe"?"down":hit.outcome});
+  const logHit=(hit:DamageHit,name:string,team:HitTeam)=>hitFeed.add({...hit,victim:{name,team},outcome:hit.outcome==="out" && persistence.covers(team==="foe")?"down":hit.outcome});
   let faoraInterrupter: Faora | Player | null = null;
   let faoraCounterTime = 0;
   const finishRescueCounter = (hit: DamageHit, victim: Faora | Player) => {
@@ -757,7 +760,7 @@ async function main() {
     if (interactions.carrying === fighter) interactions.drop();
     fighter.trails.emit(fighter.pos, 0, 0);
     refreshRecovery();
-    hud.toast(fighter.name.toUpperCase(), persistence.enabled && !fighter.enemyMode?"Back in 25 s":fighter.vitals.downed?"Down":"Defeated");
+    hud.toast(fighter.name.toUpperCase(), persistence.covers(fighter.enemyMode)?"Back in 25 s":fighter.vitals.downed?"Down":"Defeated");
   };
   fighter.onLeap = () => {
     if(fighter.isDoomsday) {
@@ -957,11 +960,19 @@ async function main() {
     damageEffects.resetScreen();
     refreshRecovery(); status.textContent = ""; play();
   });
-  const persistenceInput=document.getElementById("persistence-mode") as HTMLInputElement;
+  const persistenceInput=document.getElementById("persist-friends") as HTMLInputElement;
+  const foePersistenceInput=document.getElementById("persist-foes") as HTMLInputElement;
   persistenceInput.checked=persistence.enabled;
+  foePersistenceInput.checked=persistence.foes;
   document.getElementById("game-modes")!.addEventListener("click",e=>e.stopPropagation());
+  foePersistenceInput.addEventListener("change",()=>{
+    persistence.setFoes(foePersistenceInput.checked);
+    for(const fighter of roster)if(fighter.enemyMode)fighter.rescueTarget=null;
+    try{localStorage.setItem("power.persistence.foes",String(persistence.foes));}catch{}
+    refreshRecovery();
+  });
   persistenceInput.addEventListener("change",()=>{
-    persistence.setEnabled(persistenceInput.checked);hud.persistenceMode=persistence.enabled;
+    persistence.setEnabled(persistenceInput.checked);
     selfRevive.reset();holdingAid=false;
     for(const fighter of roster)if(!fighter.enemyMode)fighter.rescueTarget=null;
     try{localStorage.setItem("power.persistence",String(persistence.enabled));}catch{}
@@ -1026,7 +1037,7 @@ async function main() {
   deployFighter(gojo, true, { x: 10, z: -5 });
   refreshRoster =setupRoster(roster, isDeployed, deployFighter, menuReviveFighter, () => {
     if (lockedTarget && !lockedTarget.hostile) { lockedTarget = null; followUp.cancel(); }
-  },()=>persistence.enabled);
+  },enemy=>persistence.covers(enemy));
   refreshRecovery();
   sukuna.onBlink = (from, to) => {
     atmosphere.shockwave(from, new THREE.Vector3(0, 1, 0), 0, 3, 1);
@@ -1458,7 +1469,7 @@ async function main() {
     const hasCasualty = (fighter: Faora) =>
       activeFighters().some(other => other !== fighter && other.enemyMode === fighter.enemyMode && other.vitals.downed)
       || (!fighter.enemyMode && player.vitals.downed);
-    const faoraNeedsRescue = hasCasualty(faora) && (!persistence.enabled || faora.enemyMode);
+    const faoraNeedsRescue = hasCasualty(faora) && !persistence.covers(faora.enemyMode);
     faoraCounterTime = Math.max(0, faoraCounterTime - dt);
     if (!faoraNeedsRescue || !faoraActive || faora.vitals.defeated || faoraCounterTime === 0
       || faoraInterrupter?.vitals.defeated
@@ -1647,7 +1658,7 @@ async function main() {
       updateRescuePriorities(dt);
       const units=rescueUnits();
       persistence.update(elapsed,units);
-      revivals.update(dt,units.filter(unit=>!persistence.enabled || unit.enemy || !unit.vitals.defeated));
+      revivals.update(dt,units.filter(unit=>!persistence.covers(unit.enemy) || !unit.vitals.defeated));
       chooseOpponents(dt);
       const enemyFighters=activeFighters().filter(fighter=>fighter.enemyMode && !fighter.vitals.defeated);
       const targetDistance = (fighter: Faora) => {
