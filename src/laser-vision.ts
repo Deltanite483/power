@@ -4,10 +4,10 @@ import { beamMaterial } from './combat-fx';
 
 const RANGE = 160;        // m the beam reaches past its target
 const TARGET_RANGE = 280;
-const CHARGE = .75;       // s of glowing eyes before it fires
+const CHARGE = .45;       // s of glowing eyes before it fires
 const BURST = .9;         // s of beam
-const SWEEP = .25;        // rad/s the beam can drag toward you: a sidestep escapes it
-const COOLDOWN = 5.5;
+const SWEEP = .4;         // rad/s the beam can drag toward you: a quick sidestep still escapes it
+const COOLDOWN = 3;
 
 function glowTexture(): THREE.Texture {
   const canvas = document.createElement('canvas');

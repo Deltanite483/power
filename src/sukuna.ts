@@ -28,6 +28,8 @@ const CLEAVE_REACH = 5.5;
 const PUNCH_REACH = 3.8;
 const KICK_REACH = 4.6;
 const CLEAVE_HITS = 30;
+/** Binding vow: Fuga can only be drawn after this many slashes (Dismantle, Cleave, World Slash, Shrine). In exchange it costs little CE. */
+export const FUGA_SLASHES = 40;
 const CLEAVE_INTERVAL = .035;
 const FUGA_SPEED = 230;
 /** Beyond Dismantle's reach he answers with a single cut that ignores cover and splits the ground under it. */
@@ -49,6 +51,8 @@ export class SukunaPowers {
   private cooldown = 1.5;
   private domainCooldown = 11;
   private fugaCooldown = 8;
+  /** Slashes thrown since the last Fuga; the binding vow unlocks Fuga at FUGA_SLASHES. */
+  private slashes = 0;
   private volleyPoiseRevision = 0;
   private meleeCasts = 0;
   private readonly volleyTargets: CombatTarget[] = [];
@@ -153,6 +157,7 @@ export class SukunaPowers {
     this.worldCooldown = 2;
     this.domainCooldown = 11;
     this.fugaCooldown = 8;
+    this.slashes = 0;
     this.meleeCasts = 0;
   }
 
@@ -266,6 +271,7 @@ export class SukunaPowers {
         }
         while (this.pulse < due) {
           this.onShrinePulse(this.origin, DOMAIN_RADIUS, this.pulse++);
+          this.slashes += VOLLEY_SIZE;
           for (const target of domainTargets) {
             this.point.copy(target.pos).y += 1;
             if (!target.vitals.defeated && this.point.distanceToSquared(this.origin) <= DOMAIN_RADIUS ** 2) {
@@ -301,6 +307,7 @@ export class SukunaPowers {
               break;
             }
             this.onHit("cleave", target, this.direction);
+            this.slashes++;
             this.marks.scatter(this.point, .45, 2.6, .075, .5);
             if (this.volleyRemaining % 2 === 0) this.marks.scatter(this.point, .6, 1.6, .05, .35, .02, .9);
             fighter.castSwing = 1;
@@ -398,6 +405,7 @@ export class SukunaPowers {
         this.fugaDuration = Math.max(.04, this.fugaFrom.distanceTo(this.fugaEnd) / FUGA_SPEED);
         this.fugaFlying = true;
         this.onRelease("fuga", this.origin);
+        this.slashes = 0; // the vow is spent; the next Fuga needs another full count
         this.cooldown = 3.4;
         this.stop(fighter);
         return;
@@ -413,6 +421,7 @@ export class SukunaPowers {
         world.hit.clear();
         world.active = true;
         this.onRelease("world-slash", this.origin);
+        this.slashes++;
         this.updateWorldSlash(0, enemies);
         this.cooldown = 1.3;
         this.worldCooldown = WORLD_COOLDOWN;
@@ -468,7 +477,7 @@ export class SukunaPowers {
     const guarding = (opponent.combatGuard ?? 0) >= 35;
     const opening = (opponent.combatWhiff ?? 0) > 0 || opponent.launched === true;
     const melee = distance <= CLEAVE_REACH;
-    const fuga = this.fugaCooldown === 0 && distance <= 74 && !imminentHit && !(melee && opening)
+    const fuga = this.slashes >= FUGA_SLASHES && this.fugaCooldown === 0 && distance <= 74 && !imminentHit && !(melee && opening)
       && energy.canSpend(COST.fuga, finisher ? 0 : reserve);
     let technique: SukunaTechnique = "dismantle";
     if (fuga) technique = "fuga";
@@ -503,6 +512,7 @@ export class SukunaPowers {
   }
 
   private launchCut(kind: "dismantle" | "cleave", direction: THREE.Vector3, fighter: Faora, enemies: readonly CombatTarget[]) {
+    this.slashes++;
     const fx = this.volleyFx.find(candidate => !this.activeCuts.some(cut => cut.fx === candidate));
     if (!fx) return;
     const cut = { kind, fx, tilt: (this.volleyRemaining * 2.39996) % Math.PI - HALF, origin: this.origin.clone(), direction: direction.clone(), distance: 0, age: 0, hit: new Set<CombatTarget>(), targets: kind === "dismantle" ? [...this.volleyTargets] : enemies };

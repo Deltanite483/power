@@ -1,5 +1,5 @@
 import {SuperBlock} from "./super-block";
-import { bypassesDefenseStat, terrainHit, type HitSource, type DamageHit } from "./combat-events";
+import { attackerMultiplier, bypassesDefenseStat, terrainHit, type HitSource, type DamageHit } from "./combat-events";
 import * as THREE from "three";
 import { STAGGER_LIMIT, Vitality } from "./vitality";
 import { column, slopeAt, surfaceMaterial, MATERIALS, Mat, VOXEL, type Column, type Heightfield, type MaterialProps } from "./terrain/heightfield";
@@ -95,7 +95,8 @@ export interface Impact {
 }
 
 export class Player {
-  readonly vitals = new Vitality();
+  /** Max health 200: the player is one of the power users. */
+  readonly vitals = Object.assign(new Vitality(200), { regenRate: 1.2 }); // twice the base regeneration
   onDefeated: () => void = () => {};
   onCombatHit: (hit: DamageHit) => void = () => {};
   onInjured: (strength: number) => void = () => {};
@@ -272,7 +273,8 @@ export class Player {
   get launched() { return !this.onGround && !this.flying && this.vitals.orientation < 75; }
 
   revive(persistent=false, fromMenu=false):boolean {
-    if(!this.vitals.revive(fromMenu ? 100 : persistent ? 75 : 40,!persistent && !fromMenu))return false;
+    const max=this.vitals.maxHealth;
+    if(!this.vitals.revive(fromMenu ? max : persistent ? max * .75 : max * .4,!persistent && !fromMenu))return false;
     this.superBlock.reset();
     this.held=false;
     this.keys.clear();this.setFlying(false);this.vel.set(0,0,0);
@@ -288,7 +290,7 @@ export class Player {
   receiveHit(strength: number, damageMultiplier=1, source: HitSource=terrainHit) {
     if(this.superBlock.active)return;
     const before=this.vitals.health;
-    if (!this.vitals.hit(strength,damageMultiplier,bypassesDefenseStat(source))) return;
+    if (!this.vitals.hit(strength,damageMultiplier*attackerMultiplier(source),bypassesDefenseStat(source))) return;
     // only a hit past the stagger limit, or being badly dazed, knocks you out of flight
     if (strength > STAGGER_LIMIT || this.vitals.orientation < 35) this.setFlying(false);
     this.onInjured(strength);

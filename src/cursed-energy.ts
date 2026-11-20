@@ -3,6 +3,12 @@ const REGEN_PER_SECOND = 4;
 const BURNOUT_SECONDS = 7;
 const BLACK_FLASH_REFUND = 16;
 const FOCUS_SECONDS = 6;
+/** After a Black Flash the sorcerer is "in the zone": techniques cost this fraction while focus lasts. */
+const ZONE_COST = .75;
+/** Negative emotions generate cursed energy: CE gained per HP lost to damage. */
+const PAIN_CE_PER_HP = .1;
+/** Pain only tops the reserve up to this fraction, so a beating fuels a comeback, not an endless supply. */
+const PAIN_RESERVE_CAP = .6;
 
 export const RCT_HEAL_FRACTION = .66;
 
@@ -10,7 +16,7 @@ export const CURSED_COST = {
   melee: 3, gojoMelee: 4, infinity: 1.2, blink: 9, simpleDomain: 9, fallingBlossom: 12,
   blueMelee: 12, redMelee: 16, blue: 7, red: 10, maximumBlue: 12,
   dismantle: 16, cleave: 20, rct: 24,
-  purple: 30, openingPurple: 38, worldSlash: 37, fuga: 45, domain: 76,
+  purple: 30, openingPurple: 38, worldSlash: 37, fuga: 15, domain: 76,
 } as const;
 
 /** Per-fighter reserve with separate readings for the HUD and the combat aura. */
@@ -31,14 +37,26 @@ export class CursedEnergy {
 
   setInfinity(active: boolean) { this.#costScale = active ? 1.25 : 1; }
 
+  /** True while a Black Flash has the sorcerer "in the zone". */
+  get inZone() { return this.#focus > 0 && !this.burnedOut; }
+
+  private scaled(cost: number) { return cost * this.#costScale * (this.inZone ? ZONE_COST : 1); }
+
   canSpend(cost: number, keep = 0) {
-    return !this.burnedOut && this.#reserve >= cost * this.#costScale + keep;
+    return !this.burnedOut && this.#reserve >= this.scaled(cost) + keep;
   }
 
   spend(cost: number) {
     if (!this.canSpend(cost)) return false;
-    this.#reserve -= cost * this.#costScale;
+    this.#reserve -= this.scaled(cost);
     return true;
+  }
+
+  /** Pain, anger and fear are where cursed energy comes from: taking damage yields a sliver of CE. */
+  fromPain(healthLost: number) {
+    if (this.burnedOut || !(healthLost > 0)) return;
+    const cap = CAPACITY * PAIN_RESERVE_CAP;
+    if (this.#reserve < cap) this.#reserve = Math.min(cap, this.#reserve + healthLost * PAIN_CE_PER_HP);
   }
 
   spendUpkeep(cost: number) {

@@ -1,7 +1,7 @@
 export const MELEE_CHARGE_THRESHOLD = .3;
 export const RAM_BLOCK_DAMAGE = .25;
 export const RAM_TRANSFER = .5;
-export const ANISSA_RAM_DAMAGE_MULTIPLIER = 1.2;
+export const ANISSA_RAM_DAMAGE_MULTIPLIER = 1.6;
 export const ramStrength = (speed: number) => speed * .45;
 
 /** Shared combat charge and guard arithmetic, expressed in attack/guard points. */

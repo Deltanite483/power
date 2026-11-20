@@ -3,7 +3,7 @@ import { buildGojo, GOJO_SPEC } from "./gojo-model";
 import { GojoInfinity } from "./gojo";
 import { CursedEnergy, CURSED_COST } from "./cursed-energy";
 import { CursedReserveAura } from "./cursed-aura";
-import { bypassesDefenseStat, terrainHit, playerHit, type HitSource, type DamageHit } from "./combat-events";
+import { attackerMultiplier, bypassesDefenseStat, terrainHit, playerHit, type HitSource, type DamageHit } from "./combat-events";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Player } from "./player";
@@ -40,9 +40,9 @@ export type FaoraState = "follow" | "retaliate" | "ragdoll" | "carried";
 export type PunchStyle = "straight" | "uppercut" | "down";
 const UP = new THREE.Vector3(0, 1, 0);
 const BODY = 1.9;
-const BEAST_SPRINT = 36; // m/s a charging sprint adds over his 22 m/s run
+const BEAST_SPRINT = 50; // m/s a charging sprint adds over his 22 m/s run
 const BEAST_SKIP_DISTANCE = 300;
-const BEAST_SKIP_COOLDOWN = 10;
+const BEAST_SKIP_COOLDOWN = 5;
 const SUKUNA_BLINK_COOLDOWN = 3.5;
 const SUKUNA_POISE_THRESHOLD = 75;
 const SUKUNA_LAUNCH_THRESHOLD = 110;
@@ -176,7 +176,7 @@ export class Faora {
   private ramFollowsThrow = false;
 
   followThrownTarget(target: CombatTarget) {
-    if (this.name !== "Anissa" || this.vitals.health <= ANISSA_RETREAT_HP || this.recovering) return;
+    if (this.name !== "Anissa" || this.vitals.healthFraction * 100 <= ANISSA_RETREAT_HP || this.recovering) return;
     this.thrownTarget = target;
     this.throwFollowTime = 1.25;
   }
@@ -372,7 +372,8 @@ export class Faora {
   }
 
   constructor(private world: Destruction, scene: THREE.Scene, readonly name = "Faora-Ul") {
-    this.vitals = new Vitality(this.isGojo || this.isSukuna ? 600 : 100, () => {
+    // Sorcerers 300 HP; Battle Beast and Doomsday 150 (they also resist most damage); Faora and Anissa 200.
+    this.vitals = new Vitality(this.isGojo || this.isSukuna ? 300 : this.name === "Battle Beast" || this.isDoomsday ? 150 : 200, () => {
       if (this.ragdoll.active) this.ragdollTime *= .5;
     });
     this.cursedEnergy = this.isGojo || this.isSukuna ? new CursedEnergy(this.isGojo ? 5.5 : undefined) : null;
@@ -540,10 +541,11 @@ export class Faora {
     if (this.superBlocking) return;
     if (this.hasSukunaChargeArmor) multiplier *= .1;
     const before=this.vitals.health;
-    if(!this.vitals.hit(strength,multiplier,bypassesDefenseStat(source)))return;
+    if(!this.vitals.hit(strength,multiplier*attackerMultiplier(source),bypassesDefenseStat(source)))return;
     const damage = before-this.vitals.health;
     this.damagePressure += damage;
     if (damage > 0) {
+      this.cursedEnergy?.fromPain(damage);
       this.recentDamageHits++;
       if (this.isSukuna && SUKUNA_MELEE_HITS.has(source.action)) {
         this.sukunaMeleePressure++;
@@ -1782,7 +1784,7 @@ export class Faora {
     input.crouch = this.beastJumpWindup > 0 ? THREE.MathUtils.clamp(1 - this.beastJumpWindup / .3, .3, 1) : 0;
     input.landing = this.doomsdayLanding; input.rise = this.isSukuna && airborne ? 0 : this.riseTime / RISE_TIME;
     input.gesture = Math.min(1, this.gesture / .25);
-    input.hurt = this.retreating ? 1 : this.healing ? THREE.MathUtils.smoothstep(80 - this.vitals.health, 0, 40) : 0;
+    input.hurt = this.retreating ? 1 : this.healing ? THREE.MathUtils.smoothstep(80 - this.vitals.healthFraction * 100, 0, 40) : 0;
     input.helping = this.rescueTarget !== null && this.pos.distanceTo(this.rescueTarget.pos) < 3.5;
     input.held = this.held;
     const focus = this.focus;

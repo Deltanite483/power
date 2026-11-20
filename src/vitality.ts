@@ -24,6 +24,8 @@ export function hitDamage(strength: number): number {
 
 export class Vitality {
   damageScale = 1;
+  /** HP regained per second out of a guard (guarding multiplies it). */
+  regenRate = .6;
   health: number;
   orientation = 100;
   private quietTime = 0;
@@ -86,7 +88,7 @@ export class Vitality {
     this.stasisRecovery = Math.max(0, this.stasisRecovery - elapsed);
     this.quietTime += elapsed;
     if (this.quietTime > 1.5) this.orientation = Math.min(100, this.orientation + dt * 8);
-    if (regenerateHealth) this.health = Math.min(this.maxHealth, this.health + healingTime * .6 * (guarding ? GUARD_HEAL_MULTIPLIER : 1));
+    if (regenerateHealth) this.health = Math.min(this.maxHealth, this.health + healingTime * this.regenRate * (guarding ? GUARD_HEAL_MULTIPLIER : 1));
   }
 
   recoverWhenQuiet(dt: number, rate: number, delay: number) {

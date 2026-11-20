@@ -7,7 +7,7 @@ type Captive = Player | Faora;
 type Attack = "punch" | "kick" | "throw";
 const STRUGGLE_TIME = 4;
 const GRAB_COOLDOWN = 6;
-const ESCAPE_PUNCHES = 8;
+const ESCAPE_PUNCHES = 4; // punches for the player to break free; kept low so her grab stays a hiccup, not a chore
 
 export class AnissaGrab {
   private captive: Captive | null = null;

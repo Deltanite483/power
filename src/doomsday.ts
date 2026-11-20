@@ -89,7 +89,7 @@ export class DoomsdayPowers {
     }
     fighter.vitals.damageScale=.1/(1+.2*fighter.vitals.revivesUsed);
     this.sinceHit+=dt;
-    if(this.sinceHit>2)fighter.vitals.health=Math.min(100,fighter.vitals.health+dt*.8*(fighter.blocking?GUARD_HEAL_MULTIPLIER:1));
+    if(this.sinceHit>2)fighter.vitals.health=Math.min(fighter.vitals.maxHealth,fighter.vitals.health+dt*2*(fighter.blocking?GUARD_HEAL_MULTIPLIER:1));
     this.beamCooldown=Math.max(0,this.beamCooldown-dt);this.novaCooldown=Math.max(0,this.novaCooldown-dt);
     if(fighter.novaExhausted)return;
     if(!target || !fighter.availableToFight || target.vitals.defeated || (this.target && this.target!==target)){
@@ -123,7 +123,7 @@ export class DoomsdayPowers {
         this.onNova(origin,radius);
         this.exhaustion=10;
         fighter.novaExhausted=true;
-        this.energy=0;this.novaCooldown=16;this.beamCooldown=Math.max(this.beamCooldown,4);
+        this.energy=0;this.novaCooldown=10;this.beamCooldown=Math.max(this.beamCooldown,4);
         this.state='idle';this.clock=0;this.target=null;
       }
       return;
@@ -135,7 +135,7 @@ export class DoomsdayPowers {
     if(this.state==='beam-charge'){
       fighter.specialCharge=Math.min(1,this.clock/1.2);this.aim.copy(this.want);
       if(this.clock<1.2)return;
-      this.state='beam';this.clock=0;this.tick=0;this.trace=0;this.burnGroup=-1;this.beamCooldown=12;
+      this.state='beam';this.clock=0;this.tick=0;this.trace=0;this.burnGroup=-1;this.beamCooldown=7;
       this.onBeamFire();
     }
     const angle=this.aim.angleTo(this.want);

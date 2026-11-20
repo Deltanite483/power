@@ -1,5 +1,5 @@
-export const SUPER_BLOCK_DURATION=3;
-export const SUPER_BLOCK_COOLDOWN=2;
+export const SUPER_BLOCK_DURATION=5;
+export const SUPER_BLOCK_COOLDOWN=1;
 /** Cooldown begins when immunity expires. Time advances only during unpaused play. */
 export class SuperBlock {
   private time=0;

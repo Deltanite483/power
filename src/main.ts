@@ -322,7 +322,7 @@ async function main() {
   const refreshRecovery = () => {
     refreshRoster();
     retryPlayer.hidden = !player.vitals.eliminated || persistence.enabled;
-    menuRevivePlayer.disabled = player.vitals.health >= 100;
+    menuRevivePlayer.disabled = player.vitals.health >= player.vitals.maxHealth;
     menuRevivePlayer.textContent = player.vitals.defeated ? "Revive" : "Heal to full";
     pauseActions.hidden = false;
   };
@@ -941,7 +941,7 @@ async function main() {
   menuRevivePlayer.addEventListener("click", e => {
     e.stopPropagation();
     if (!player.vitals.defeated) {
-      player.vitals.health = 100;
+      player.vitals.health = player.vitals.maxHealth;
       damageEffects.resetScreen();
       refreshRecovery();
       status.textContent = "Healed";
@@ -1481,9 +1481,9 @@ async function main() {
     const opponent = anissa.opponent && valid(anissa, anissa.opponent)
       ? anissa.opponent : pickOpponent(anissa) ?? (anissa.hostile ? playerCombatTarget() : null);
     const healthyOpponent = opponent && !opponent.vitals.defeated
-      && opponent.vitals.health > 60 && anissa.pos.distanceToSquared(opponent.pos) <= 120 ** 2;
+      && opponent.vitals.healthFraction > .6 && anissa.pos.distanceToSquared(opponent.pos) <= 120 ** 2;
     anissa.rescuePressure = anissaHasCasualty && !!healthyOpponent;
-    anissa.rescueRecovery = anissaHasCasualty && anissa.vitals.health < 55;
+    anissa.rescueRecovery = anissaHasCasualty && anissa.vitals.healthFraction < .55;
   };
 
   const rescueUnits=():RescueUnit[]=>{
@@ -1502,7 +1502,7 @@ async function main() {
       id:fighter.name,enemy:fighter.enemyMode,pos:fighter.pos,vitals:fighter.vitals,
       canBeHelped:!fighter.held,canHelp:(!fighter.retreating || fighter === beast) && !fighter.held && !fighter.vitals.defeated && !fighter.ragdoll.active && (!fighter.hostile || fighter.enemyMode)
         && (!fighter.isDoomsday || !doomsdayAwareness(fighter,activeFighters(),playerCombatTarget()).hasTarget)
-        && (fighter !== beast || fighter.vitals.health <= 15 || fighter.rescueTarget !== null)
+        && (fighter !== beast || fighter.vitals.healthFraction <= .15 || fighter.rescueTarget !== null)
         && (fighter !== anissa || (!fighter.rescueRecovery && !fighter.rescuePressure && !fighter.attackCommitted))
         && (fighter !== faora || !fighter.rescueCountering),
       rescuePriority: fighter === faora ? 1 : fighter === beast ? -1 : 0,
