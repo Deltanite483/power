@@ -1,16 +1,21 @@
 const CAPACITY = 100;
 const REGEN_PER_SECOND = 4;
-const BURNOUT_SECONDS = 7;
+/** Technique burnout after a domain closes normally. */
+export const BURNOUT_SECONDS = 7;
+/** A domain clash cancels both domains, and each caster burns out this many times longer. */
+export const CLASH_BURNOUT_SCALE = 3;
 const BLACK_FLASH_REFUND = 16;
 const FOCUS_SECONDS = 6;
 /** After a Black Flash the sorcerer is "in the zone": techniques cost this fraction while focus lasts. */
 const ZONE_COST = .75;
 /** Negative emotions generate cursed energy: CE gained per HP lost to damage. */
-const PAIN_CE_PER_HP = .1;
+const PAIN_CE_PER_HP = .2;
 /** Pain only tops the reserve up to this fraction, so a beating fuels a comeback, not an endless supply. */
 const PAIN_RESERVE_CAP = .6;
 
 export const RCT_HEAL_FRACTION = .66;
+/** Caught inside an enemy's domain, expanding your own costs this fraction: a domain is answered with a domain. */
+export const COUNTER_DOMAIN_COST = .4;
 
 export const CURSED_COST = {
   melee: 3, gojoMelee: 4, infinity: 1.2, blink: 9, simpleDomain: 9, fallingBlossom: 12,
@@ -73,10 +78,18 @@ export class CursedEnergy {
 
   openDomain() { this.#domain = true; }
 
-  closeDomain() {
+  /** burnout: seconds of technique burnout after the domain; longer domains burn out longer. */
+  closeDomain(burnout = BURNOUT_SECONDS) {
     if (!this.#domain) return;
     this.#domain = false;
-    this.#burnout = BURNOUT_SECONDS;
+    this.#burnout = burnout;
+  }
+
+  /** A technique drawn inside his own open domain (Fuga as the Shrine closes), before burnout sets in. */
+  spendDuringDomain(cost: number) {
+    if (!this.#domain || this.#reserve < cost) return false;
+    this.#reserve -= cost;
+    return true;
   }
 
   update(dt: number) {

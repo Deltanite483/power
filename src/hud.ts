@@ -44,6 +44,8 @@ export class Hud {
   shake = 0;
   /** Whether auto-return covers this side (false = you and friends, true = foes). */
   persists: (enemy: boolean) => boolean = () => false;
+  /** A short line about a fighter's technique state (Sukuna's Fuga count or domain), shown under their bar. */
+  techniqueNote: (fighter: Faora) => string = () => "";
   onSonicBoom: () => void = () => {};
   private gauge = $("gauge");
   private gaugeTimer = 0;
@@ -172,11 +174,13 @@ export class Hud {
       bar.classList.toggle("friend", friend);
       bar.classList.toggle("foe", !friend);
       this.set(bar.querySelector("span")!, fighter.name.toUpperCase());
-      this.set(bar.querySelector("small")!, this.reviveNote(fighter.vitals, this.persists(fighter.enemyMode)));
+      this.set(bar.querySelector(".unit-revives")!, this.reviveNote(fighter.vitals, this.persists(fighter.enemyMode)));
       bar.classList.toggle("downed",fighter.vitals.defeated && (fighter.vitals.downed || this.persists(fighter.enemyMode)));
       bar.classList.toggle("locked", locked);
       this.set(bar.querySelector("b")!, this.persists(fighter.enemyMode) && fighter.vitals.defeated?"DOWN":fighter.vitals.downed?"DOWN":fighter.vitals.eliminated?"OUT":formatHealth(fighter.vitals));
       bar.querySelector<HTMLElement>(".vital-track i")!.style.transform = `scaleX(${fighter.vitals.healthFraction})`;
+      const note = bar.querySelector<HTMLElement>(".unit-technique");
+      if (note) this.set(note, this.techniqueNote(fighter));
       const ceBar = bar.querySelector<HTMLElement>(".vital-ce");
       const energy = fighter.cursedEnergy;
       if (ceBar && energy) {

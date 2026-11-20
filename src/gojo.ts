@@ -3,7 +3,8 @@ import type { HitSource } from "./combat-events";
 import type { CombatTarget, Faora } from "./faora";
 import type { CastPose } from "./fighter-animation";
 import { GojoEffects } from "./gojo-fx";
-import { CURSED_COST, RCT_HEAL_FRACTION, type CursedEnergy } from "./cursed-energy";
+import { BURNOUT_SECONDS, COUNTER_DOMAIN_COST, CURSED_COST, RCT_HEAL_FRACTION, type CursedEnergy } from "./cursed-energy";
+import { DomainDefense, type DomainDefenseKind } from "./domain-defense";
 import { GojoOrbs, segmentDistanceSq, type GojoOrb, type GojoOrbSpec } from "./gojo-orbs";
 import { BlackFlashFx } from "./sukuna-fx";
 
@@ -96,7 +97,11 @@ export class GojoPowers {
     kind: null as Projectile | null, from: new THREE.Vector3(), direction: new THREE.Vector3(), distance: 0,
     limit: 0, carved: 0, hit: new Set<CombatTarget>(),
   };
-  private readonly domain = { center: new THREE.Vector3(), age: 0, pulse: 0, active: false, victims: new Set<CombatTarget>() };
+  private readonly domain = { center: new THREE.Vector3(), age: 0, pulse: 0, active: false, victims: new Set<CombatTarget>(), candidates: [] as CombatTarget[] };
+  /** Gojo's own Simple Domain / Falling Blossom against an enemy sure-hit. */
+  readonly defense = new DomainDefense();
+  /** How much of the Void's sure-hit reaches a target: 0 blocks it, 1 is full. spend: may raise a new defence. Set by main. */
+  sureHitWard: (target: CombatTarget, spend: boolean) => number = () => 1;
   get domainActive() { return this.domain.active; }
   get voidPulse() {
     if (!this.domain.active) return 0;
@@ -116,11 +121,11 @@ export class GojoPowers {
   private poseHold = 0;
   private clock = 0;
   private blockFxAt = -Infinity;
-  private simpleDomainAt = 0;
-  private blossomAt = 0;
 
   /** An enemy sure-hit domain he is standing in, or null. Set by the caller each frame. */
   hostileDomain: { readonly center: THREE.Vector3; readonly radius: number } | null = null;
+  /** Whoever can open that domain on him (Sukuna, when they're enemies), so he can answer it as it forms. */
+  hostileCaster: CombatTarget | null = null;
   private readonly escapePoint = new THREE.Vector3();
 
   onCast: (kind: Technique, origin: THREE.Vector3) => void = () => {};
@@ -152,7 +157,8 @@ export class GojoPowers {
     this.poseHold = this.clock = 0;
     this.blockFxAt = -Infinity;
     this.cooldown = .9; this.purpleCooldown = 1.5; this.domainCooldown = 12;
-    this.blinkCooldown = this.decisionDelay = this.simpleDomainAt = this.blossomAt = 0;
+    this.blinkCooldown = this.decisionDelay = 0;
+    this.defense.reset();
     this.maximumCooldown = 5.5;
     this.openingPurple = true;
     this.lastOrbColor = null;
@@ -179,21 +185,14 @@ export class GojoPowers {
   /** The first answer to a sure-hit is a short Simple Domain. Falling Blossom covers a second window. */
   defendDomain(fighter: Faora) {
     if (fighter.vitals.frozen || fighter.vitals.defeated || fighter.held || fighter.ragdoll.active) return 1;
-    if (this.simpleDomainAt > this.clock) return 0;
-    if (this.blossomAt > this.clock) return .26;
-    if ((this.clock >= this.simpleDomainAt + 18 || this.simpleDomainAt === 0) && fighter.cursedEnergy?.spend(CURSED_COST.simpleDomain)) {
-      this.simpleDomainAt = this.clock + 2.25;
-      this.effects.burst("simple-domain", this.point.copy(fighter.pos).addScaledVector(UP, .14), 4.8, 2.25);
-      this.onDomainDefense("simple-domain", fighter.pos);
-      return 0;
-    }
-    if ((this.clock >= this.blossomAt + 13 || this.blossomAt === 0) && fighter.cursedEnergy?.spend(CURSED_COST.fallingBlossom)) {
-      this.blossomAt = this.clock + 3.4;
-      this.effects.burst("falling-blossom", this.point.copy(fighter.pos).addScaledVector(UP, .9), 3.8, 1.1);
-      this.onDomainDefense("falling-blossom", fighter.pos);
-      return .26;
-    }
-    return 1;
+    return this.defense.defend(fighter.cursedEnergy, true, kind => this.showDefense(kind, fighter.pos));
+  }
+
+  /** The Simple Domain circle or Falling Blossom swirl at a fighter's feet; Sukuna uses the same against the Void. */
+  showDefense(kind: DomainDefenseKind, pos: THREE.Vector3) {
+    if (kind === "simple-domain") this.effects.burst("simple-domain", this.point.copy(pos).addScaledVector(UP, .14), 4.8, 2.25);
+    else this.effects.burst("falling-blossom", this.point.copy(pos).addScaledVector(UP, .9), 3.8, 1.1);
+    this.onDomainDefense(kind, pos);
   }
 
   update(dt: number, fighter: Faora, opponent: CombatTarget | null, targets: readonly CombatTarget[], domainTargets = targets, elapsed = dt) {
@@ -201,6 +200,7 @@ export class GojoPowers {
     if (fighter.vitals.frozen) return;
     const energy = fighter.cursedEnergy!;
     this.clock += dt;
+    this.defense.update(dt);
     this.cooldown = Math.max(0, this.cooldown - dt);
     this.purpleCooldown = Math.max(0, this.purpleCooldown - dt);
     this.domainCooldown = Math.max(0, this.domainCooldown - dt);
@@ -229,6 +229,7 @@ export class GojoPowers {
     this.effects.update(dt, this.clock);
     this.blackFlash.update(dt);
 
+    if (!this.cast && !this.domain.active) this.answerShrine(fighter, targets, energy);
     if (this.cast) {
       this.updateCast(dt, fighter, targets, domainTargets);
     } else if (!(fighter.held || fighter.ragdoll.active || fighter.rescueTarget || energy.burnedOut)
@@ -238,6 +239,35 @@ export class GojoPowers {
       this.choose(fighter, opponent, targets, airborne, threatened);
     }
     this.planDomainEscape(fighter);
+  }
+
+  /** A domain is answered with a domain: when Malevolent Shrine forms or opens on him, he expands Unlimited Void at once,
+   * dropping Infinity if that's what it takes to afford it. Only when he can't does he fall back to fleeing its edge. */
+  /** True while he stands inside an enemy's active domain. */
+  private insideHostileDomain(fighter: Faora) {
+    const shrine = this.hostileDomain;
+    return !!shrine && fighter.pos.distanceToSquared(shrine.center) <= shrine.radius ** 2;
+  }
+
+  /** Unlimited Void's CE cost, 60% off while he's caught inside an enemy domain. */
+  private voidCost(fighter: Faora) {
+    return COST.void * (this.insideHostileDomain(fighter) ? COUNTER_DOMAIN_COST : 1);
+  }
+
+  private answerShrine(fighter: Faora, targets: readonly CombatTarget[], energy: CursedEnergy) {
+    const caster = this.hostileCaster, shrine = this.hostileDomain;
+    if (!caster || !targets.includes(caster) || caster.vitals.defeated || caster.vitals.frozen) return;
+    if (!shrine && caster.castPose !== "shrine") return;
+    if (fighter.held || fighter.ragdoll.active || energy.burnedOut || this.domainCooldown > 6) return;
+    const center = shrine?.center ?? caster.pos, reach = (shrine?.radius ?? 70) + 20;
+    if (fighter.pos.distanceToSquared(center) > reach ** 2) return;
+    const cost = this.voidCost(fighter);
+    if (!energy.canSpend(cost)) {
+      if (!fighter.infinityProtects || !energy.canSpend(cost / 1.25)) return;
+      this.infinityUntil = this.clock;
+      this.toggleInfinity(fighter, false);
+    }
+    if (this.begin(fighter, "void", caster, { kind: "void", score: 0, dropShield: true })) this.domainCooldown = 30;
   }
 
   /** Without a Void of his own to clash with, he does not stand inside Malevolent Shrine: he flies clear and waits at its edge. */
@@ -354,7 +384,7 @@ export class GojoPowers {
     const canDropShield = fighter.infinityProtects && (health >= 45 || !threatened);
     const evaluate = (kind: Tactic, value: number, keep = reserve, details: PlanDetails = {}) => {
       const cost = kind === "collapse" || kind === "steer" ? 2 : kind === "blink" ? CURSED_COST.blink
-        : details.spec ? this.orbs.castCost(details.spec, COST[kind]) : COST[kind];
+        : details.spec ? this.orbs.castCost(details.spec, COST[kind]) : kind === "void" ? this.voidCost(fighter) : COST[kind];
       const dropShield = !energy.canSpend(cost, keep);
       if (dropShield && !(canDropShield && energy.canSpend(cost / 1.25, keep))) return;
       const actualCost = fighter.infinityProtects && !dropShield ? cost * 1.25 : cost;
@@ -530,7 +560,7 @@ export class GojoPowers {
       const spec = this.orbSpec(kind, mode, target, this.origin.distanceTo(target.pos));
       plan = { kind, score: 0, spec, mode, dropShield: false };
     }
-    const cost = plan?.spec ? this.orbs.castCost(plan.spec, COST[kind]) : COST[kind];
+    const cost = plan?.spec ? this.orbs.castCost(plan.spec, COST[kind]) : kind === "void" ? this.voidCost(fighter) : COST[kind];
     if (!(kind === "rct" ? energy?.startRct() : energy?.spend(cost))) return false;
     this.cast = { kind, target, age: 0, startHealth: fighter.vitals.health, plan };
     this.lastTechnique = kind;
@@ -757,27 +787,48 @@ export class GojoPowers {
     this.effects.showInfinity(false, fighter.pos, this.clock, 0);
     this.effects.showDomain(domain.center, DOMAIN_RADIUS, 1);
     fighter.specialChanneling = true;
-    for (const target of targets) {
+    domain.candidates = [...targets];
+    this.captureVictims();
+    this.effects.burst("void", domain.center, DOMAIN_RADIUS, .8);
+    this.onImpact("void", domain.center);
+  }
+
+  /** Pull everyone inside into the Void, unless an anti-domain technique keeps them out for now; they're tried again each pulse. */
+  private captureVictims() {
+    const domain = this.domain;
+    for (const target of domain.candidates) {
       this.center.copy(target.pos).addScaledVector(UP, 1);
       if (target.vitals.defeated || domain.victims.has(target) || this.center.distanceToSquared(domain.center) > DOMAIN_RADIUS ** 2) continue;
+      if (this.sureHitWard(target, true) === 0) continue;
       domain.victims.add(target);
       target.vitals.freeze(domain);
       target.vel.set(0, 0, 0);
       this.onDomainCapture(target);
     }
-    this.effects.burst("void", domain.center, DOMAIN_RADIUS, .8);
-    this.onImpact("void", domain.center);
   }
 
   releaseDomainTarget(target: CombatTarget) {
     if (this.domain.victims.delete(target)) target.vitals.thaw(this.domain);
   }
 
-  private closeDomain(fighter: Faora) {
+  /** The active Void, for detecting a clash with another domain. */
+  get voidDomain() { return this.domain.active ? { center: this.domain.center, radius: DOMAIN_RADIUS } : null; }
+
+  /** A domain clash: the Void shatters at once and his technique burnout runs burnoutScale times as long. */
+  shatterDomain(fighter: Faora, burnoutScale: number) {
+    if (!this.domain.active) return;
+    this.effects.burst("void", this.domain.center, DOMAIN_RADIUS, .8);
+    this.closeDomain(fighter, BURNOUT_SECONDS * burnoutScale);
+    fighter.specialChanneling = false;
+    this.cooldown = .65;
+  }
+
+  private closeDomain(fighter: Faora, burnout = BURNOUT_SECONDS) {
     const domain = this.domain;
-    if (domain.active) fighter.cursedEnergy?.closeDomain();
+    if (domain.active) fighter.cursedEnergy?.closeDomain(burnout);
     for (const target of domain.victims) target.vitals.thaw(domain);
     domain.victims.clear();
+    domain.candidates = [];
     domain.active = false;
     this.effects.hideDomain();
   }
@@ -795,8 +846,11 @@ export class GojoPowers {
       const remainingFraction = DOMAIN_PULSE_MULTIPLIERS[domain.pulse++];
       this.onVoidPulse(domain.center);
       this.effects.burst("void", domain.center, DOMAIN_RADIUS, .65);
+      this.captureVictims();
       for (const target of domain.victims) {
-        const damage = target.vitals.drainWhileFrozen(domain, remainingFraction);
+        // Falling Blossom blunts the drain; without cover each pulse takes its full share.
+        const ward = this.sureHitWard(target, false);
+        const damage = target.vitals.drainWhileFrozen(domain, 1 - (1 - remainingFraction) * ward);
         if (damage > 0) this.onDomainDrain(target, damage);
       }
     }

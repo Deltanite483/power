@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import type { CombatTarget, Faora } from "./faora";
-import { CURSED_COST, RCT_HEAL_FRACTION } from "./cursed-energy";
+import { COUNTER_DOMAIN_COST, CURSED_COST, RCT_HEAL_FRACTION } from "./cursed-energy";
+import { DomainDefense } from "./domain-defense";
 import type { CastPose } from "./fighter-animation";
 import { SukunaCutFx } from "./sukuna-cut-fx";
-import { BlackFlashFx, buildShrine, CursedAura, DomainSky, FugaFx, SlashMarks, type FlameLook } from "./sukuna-fx";
+import { BlackFlashFx, buildShrine, CursedAura, DomainSky, FugaFx, ShrineBarrier, SlashMarks, type FlameLook } from "./sukuna-fx";
 
 export type SukunaTechnique = "dismantle" | "cleave" | "shrine" | "fuga" | "rct" | "punch" | "kick" | "world-slash";
 const WINDUP = { dismantle: .7, cleave: .42, shrine: 1.4, fuga: 1.15, rct: 1.6, punch: .23, kick: .36, "world-slash": 1.5 };
@@ -13,14 +14,35 @@ const COST: Record<SukunaTechnique, number> = {
   fuga: CURSED_COST.fuga, rct: CURSED_COST.rct, punch: CURSED_COST.melee,
   kick: CURSED_COST.melee, "world-slash": CURSED_COST.worldSlash,
 };
+/** Largest reach of the barrierless Shrine. */
 const DOMAIN_RADIUS = 200;
-const DOMAIN_DURATION = 10;
-const DOMAIN_SLASHES = 800;
 const VOLLEY_SIZE = 20;
 const VOLLEY_INTERVAL = .055;
-const DOMAIN_PULSES = DOMAIN_SLASHES / VOLLEY_SIZE;
-const DOMAIN_PULSE_INTERVAL = DOMAIN_DURATION / DOMAIN_PULSES;
+/** Each pulse of the Shrine is a volley of slashes over everything inside it. */
+const DOMAIN_PULSE_INTERVAL = .25;
+
+/** Sukuna shapes his domain each time: open (no barrier, huge reach, enemies can run) or a closed barrier
+ * (small, traps everyone inside, stronger sure-hit, and ends with Fuga). Size and duration drive the CE cost. */
+export type DomainForm = "open" | "barrier";
+export interface DomainSettings { form: DomainForm; radius: number; duration: number }
+const OPEN_RADIUS = { min: 60, max: DOMAIN_RADIUS }, BARRIER_RADIUS = { min: 25, max: 70 };
+const DOMAIN_DURATION = { min: 3, open: 6, barrier: 10 };
+export function domainCost({ form, radius, duration }: DomainSettings) {
+  const max = form === "open" ? OPEN_RADIUS.max : BARRIER_RADIUS.max;
+  return 18 + 58 * (duration / 10) * (radius / max) ** 1.5;
+}
+/** Burnout after the domain closes grows with how long it was held. */
+const domainBurnout = (duration: number) => 2 + duration * .5;
+/** The barrier's sure-hit is stronger than the open form's. */
+const BARRIER_SURE_HIT = 1.5;
+
 const FUGA_RADIUS = 13;
+/** Slashes at which Fuga reaches full strength: about a long barrier domain's worth. */
+const FUGA_FULL_SLASHES = 640;
+const FUGA_MAX_RADIUS = 170;
+/** 0 at the binding vow's minimum, 1 at a full-strength Fuga. */
+export const fugaPower = (slashes: number) => THREE.MathUtils.clamp((slashes - FUGA_SLASHES) / (FUGA_FULL_SLASHES - FUGA_SLASHES), 0, 1);
+const fugaRadius = (power: number) => FUGA_RADIUS + (FUGA_MAX_RADIUS - FUGA_RADIUS) * power ** .8;
 const CUT_RECOVERY = 2.2;
 const DISMANTLE_RANGE = 86;
 const DISMANTLE_SPEED = 150;
@@ -58,6 +80,14 @@ export class SukunaPowers {
   private readonly volleyTargets: CombatTarget[] = [];
   private volleyCursor = 0;
   private shrineActive = false;
+  /** Whether a point is inside an enemy's active domain (Unlimited Void). Set by main. */
+  insideHostileDomain: (point: THREE.Vector3) => boolean = () => false;
+  /** Sukuna's own Simple Domain / Falling Blossom against an enemy sure-hit (Unlimited Void). */
+  readonly defense = new DomainDefense();
+  private settings: DomainSettings = { form: "open", radius: DOMAIN_RADIUS, duration: DOMAIN_DURATION.open };
+  private domainPulses = 0;
+  /** Power and radius of the Fuga in flight (or being drawn). */
+  private fugaShot = { power: 0, radius: FUGA_RADIUS };
   private pulse = 0;
   private clock = 0;
   private poseHold = 0;
@@ -75,6 +105,7 @@ export class SukunaPowers {
   private readonly blackFlash: BlackFlashFx;
   private readonly fugaFx: FugaFx;
   private readonly sky: DomainSky;
+  private readonly barrier: ShrineBarrier;
   private volleyRemaining = 0;
   private volleyDelay = 0;
   private readonly activeCuts: {
@@ -111,8 +142,9 @@ export class SukunaPowers {
   onCast: (technique: SukunaTechnique, origin: THREE.Vector3) => void = () => {};
   onRelease: (technique: "shrine" | "fuga" | "world-slash", origin: THREE.Vector3) => void = () => {};
   onShrinePulse: (origin: THREE.Vector3, radius: number, pulse: number) => void = () => {};
-  onFuga: (point: THREE.Vector3) => void = () => {};
-  onHit: (technique: Exclude<SukunaTechnique, "rct">, target: CombatTarget, direction: THREE.Vector3) => void = () => {};
+  onFuga: (point: THREE.Vector3, radius: number, power: number) => void = () => {};
+  /** scale: extra force for a charged Fuga (1 for everything else). */
+  onHit: (technique: Exclude<SukunaTechnique, "rct">, target: CombatTarget, direction: THREE.Vector3, scale?: number) => void = () => {};
   /** The world-cutting slash passing `point`: main carves the ground along it. */
   onWorldCut: (point: THREE.Vector3, direction: THREE.Vector3) => void = () => {};
   /** A Dismantle stopped by cover at about `point`. */
@@ -131,6 +163,7 @@ export class SukunaPowers {
     this.impactRing.scale.setScalar(FUGA_RADIUS);
     this.shrine = buildShrine();
     this.sky = new DomainSky(scene, DOMAIN_RADIUS);
+    this.barrier = new ShrineBarrier(scene);
     this.aura = new CursedAura(scene);
     this.cutFx = new SukunaCutFx(scene);
     this.worldFx = new SukunaCutFx(scene, 0xff2a3c);
@@ -152,26 +185,59 @@ export class SukunaPowers {
     this.cutFx.hide(); this.worldFx.hide();
     this.world.active = false;
     this.fugaFlying = false;
-    this.marks.clear(); this.aura.hide(); this.blackFlash.hide(); this.fugaFx.hide(); this.sky.hide();
+    this.marks.clear(); this.aura.hide(); this.blackFlash.hide(); this.fugaFx.hide(); this.sky.hide(); this.barrier.hide();
     this.cooldown = 1.5;
     this.worldCooldown = 2;
     this.domainCooldown = 11;
     this.fugaCooldown = 8;
     this.slashes = 0;
     this.meleeCasts = 0;
+    this.defense.reset();
   }
 
-  /** The open Malevolent Shrine, for fighters who must decide whether to clash with it or leave. */
+  /** The active Malevolent Shrine, for fighters who must decide whether to clash with it or leave. */
   get domain() { return this.shrineActive ? this.openDomain : null; }
-  private readonly openDomain = { center: new THREE.Vector3(), radius: DOMAIN_RADIUS };
+  private readonly openDomain = { center: new THREE.Vector3(), radius: DOMAIN_RADIUS, form: "open" as DomainForm };
+  /** Sure-hit damage scale for the current domain. */
+  get sureHitScale() { return this.settings.form === "barrier" ? BARRIER_SURE_HIT : 1; }
+  /** Slashes counted toward Fuga, for the HUD. */
+  get slashCount() { return this.slashes; }
+  /** Seconds left in the active domain, or 0. */
+  get domainTimeLeft() { return this.shrineActive ? Math.max(0, this.domainPulses * DOMAIN_PULSE_INTERVAL - this.age) : 0; }
+
+  /** Keep a body inside the closed barrier: clamp it to the dome and cancel motion through the wall. */
+  confine(pos: THREE.Vector3, vel: THREE.Vector3) {
+    if (!this.shrineActive || this.settings.form !== "barrier") return false;
+    const limit = this.settings.radius - 1.2;
+    const offset = this.cutOffset.subVectors(pos, this.openDomain.center);
+    const distance = offset.length();
+    if (distance <= limit) return false;
+    offset.multiplyScalar(1 / distance);
+    pos.copy(this.openDomain.center).addScaledVector(offset, limit);
+    vel.addScaledVector(offset, -Math.max(0, vel.dot(offset)));
+    return true;
+  }
 
   showBlackFlash(point: THREE.Vector3) {
     this.blackFlash.fire(point);
     for (let i = 0; i < 7; i++) this.marks.scatter(point, .25, 3.2, .035, .3, i * .012, .95);
   }
 
+  /** A domain clash: the Shrine shatters at once (no closing Fuga) and his burnout runs burnoutScale times as long. */
+  shatterDomain(fighter: Faora, burnoutScale: number) {
+    if (!this.shrineActive) return;
+    this.sky.flare(); this.barrier.flare();
+    if (!this.fugaFlying) this.fugaFx.hideArrow();
+    this.burnoutScale = burnoutScale;
+    this.cooldown = .65;
+    this.stop(fighter);
+    this.burnoutScale = 1;
+  }
+  private burnoutScale = 1;
+
   private stop(fighter: Faora) {
-    if (this.shrineActive) fighter.cursedEnergy?.closeDomain();
+    if (this.shrineActive) fighter.cursedEnergy?.closeDomain(domainBurnout(this.settings.duration) * this.burnoutScale);
+    this.barrier.close();
     // Hold the thrown pose for a beat, so every technique visibly lands before he moves on.
     if (this.technique && fighter.castPose) { fighter.castSwing = 1; this.poseHold = .34; }
     this.technique = this.target = null;
@@ -197,7 +263,8 @@ export class SukunaPowers {
     const casting = this.technique !== null && fighter.specialChanneling;
     const look: FlameLook = this.technique === "rct" ? "heal" : this.technique === "fuga" ? "fire" : "curse";
     this.aura.update(dt, this.clock, fighter.pos, casting && look !== "curse" ? .35 + fighter.specialCharge * .65 : 0, look);
-    this.sky.update(dt, this.clock, this.origin, this.shrineActive);
+    this.sky.update(dt, this.clock, this.origin, this.shrineActive, this.settings.form === "barrier");
+    this.barrier.update(dt, this.clock);
     this.marks.update(dt);
     this.blackFlash.update(dt);
     this.fugaFx.update(dt, this.clock);
@@ -226,16 +293,16 @@ export class SukunaPowers {
     this.worldCooldown = Math.max(0, this.worldCooldown - dt);
     const energy = fighter.cursedEnergy!;
     if (!this.technique && opponent && fighter.prioritizesSukunaJump(opponent)) return;
-    const domainTarget = !this.technique && this.domainCooldown === 0 && energy.canSpend(COST.shrine) && !fighter.held && !fighter.ragdoll.active && !fighter.rescueTarget
-      ? enemies.filter(enemy => !enemy.vitals.defeated && !enemy.vitals.frozen
-          && enemy.pos.distanceToSquared(fighter.pos) <= DOMAIN_RADIUS ** 2)
-        .sort((a, b) => Number(Boolean(b.infinityProtects)) - Number(Boolean(a.infinityProtects))
-          || b.vitals.health - a.vitals.health)[0]
-      : undefined;
-    if (domainTarget && (fighter.vitals.healthFraction > .25 || !energy.canHeal)) {
+    // Caught in an enemy domain he answers it with his own, even a little before his cooldown would allow.
+    const counter = this.insideHostileDomain(fighter.pos);
+    const plan = !this.technique && (this.domainCooldown === 0 || counter && this.domainCooldown <= 6)
+      && !fighter.held && !fighter.ragdoll.active && !fighter.rescueTarget
+      ? this.planDomain(fighter, enemies, counter) : null;
+    if (plan && (fighter.vitals.healthFraction > .25 || !energy.canHeal)) {
       fighter.retreating = false;
-      this.begin(fighter, "shrine", domainTarget, 5);
-      this.domainCooldown = 38;
+      this.settings = plan.settings;
+      this.begin(fighter, "shrine", plan.target, 5, domainCost(plan.settings) * (counter ? COUNTER_DOMAIN_COST : 1));
+      if (this.technique === "shrine") this.domainCooldown = 38;
       return;
     }
     if (this.technique === "rct") {
@@ -258,30 +325,54 @@ export class SukunaPowers {
     }
     if (this.shrineActive) {
       this.age += elapsed;
-      const due = Math.min(DOMAIN_PULSES, Math.floor((this.age + 1e-7) / DOMAIN_PULSE_INTERVAL));
+      const due = Math.min(this.domainPulses, Math.floor((this.age + 1e-7) / DOMAIN_PULSE_INTERVAL));
       this.boundary.material.opacity = .58 + .33 * Math.cos(this.age * 12);
       if (due > this.pulse) {
-        this.sky.flare();
-        for (let i = 0; i < 8; i++) this.marks.scatter(this.shrine.position, 26, 22, .26, .7, i * .03, .8);
+        this.sky.flare(); this.barrier.flare();
+        for (let i = 0; i < 8; i++) this.marks.scatter(this.shrine.position, Math.min(26, this.settings.radius * .6), 22, .26, .7, i * .03, .8);
         for (const target of domainTargets) {
           this.point.copy(target.pos).y += 1;
-          if (target.vitals.defeated || this.point.distanceToSquared(this.origin) > DOMAIN_RADIUS ** 2) continue;
+          if (target.vitals.defeated || this.point.distanceToSquared(this.origin) > this.settings.radius ** 2) continue;
           for (let i = 0; i < 3; i++) this.marks.scatter(this.point, .5, 3.4, .07, .5, i * .05);
           for (let i = 0; i < 6; i++) this.marks.scatter(this.point, 13, 13, .2, .65, i * .04, .8);
         }
         while (this.pulse < due) {
-          this.onShrinePulse(this.origin, DOMAIN_RADIUS, this.pulse++);
+          this.onShrinePulse(this.origin, this.settings.radius, this.pulse++);
           this.slashes += VOLLEY_SIZE;
           for (const target of domainTargets) {
             this.point.copy(target.pos).y += 1;
-            if (!target.vitals.defeated && this.point.distanceToSquared(this.origin) <= DOMAIN_RADIUS ** 2) {
+            if (!target.vitals.defeated && this.point.distanceToSquared(this.origin) <= this.settings.radius ** 2) {
               this.onHit("shrine", target, this.point.sub(this.origin).normalize());
             }
           }
         }
       }
-      if (this.pulse === DOMAIN_PULSES) {
+      // The barrier's finale: as it closes he draws Fuga on the slashes the domain just piled up.
+      const finaleTarget = this.settings.form === "barrier" && this.slashes >= FUGA_SLASHES && this.target
+        && enemies.includes(this.target) && !this.target.vitals.defeated ? this.target : null;
+      const left = this.domainTimeLeft;
+      if (finaleTarget && left <= WINDUP.fuga) {
+        if (fighter.castPose !== "fuga") {
+          this.fugaShot.power = fugaPower(this.slashes);
+          this.fugaShot.radius = fugaRadius(this.fugaShot.power);
+          fighter.castPose = "fuga"; fighter.castSwing = 0;
+          this.onCast("fuga", fighter.pos);
+        }
+        fighter.specialCharge = 1 - left / WINDUP.fuga;
+        this.origin.copy(fighter.pos).y += 1.35;
+        this.fugaPoint.copy(finaleTarget.pos).y += 1;
+        this.aim.subVectors(this.fugaPoint, this.origin).normalize();
+        this.impactRing.position.copy(this.fugaPoint);
+        this.impactRing.scale.setScalar(this.fugaShot.radius);
+        this.impactRing.rotation.z = this.clock * 1.4;
+        this.impactRing.material.opacity = .45 + fighter.specialCharge * .45;
+        this.impactRing.visible = true;
+        this.fugaFx.poseArrow(this.point.copy(this.origin).addScaledVector(this.aim, 1.25), this.aim, fighter.specialCharge, false, this.clock);
+      }
+      if (this.pulse === this.domainPulses) {
+        if (finaleTarget && energy.spendDuringDomain(COST.fuga)) this.releaseFuga(fighter);
         this.cooldown = .65;
+        this.origin.copy(this.openDomain.center);
         this.stop(fighter);
       }
       return;
@@ -339,7 +430,7 @@ export class SukunaPowers {
         if (this.technique === "shrine") {
           // The barrierless domain rolls outward from his feet as the seal closes.
           this.boundary.position.copy(fighter.pos).y += .1;
-          this.boundary.scale.setScalar(Math.max(1, DOMAIN_RADIUS * fighter.specialCharge ** 2));
+          this.boundary.scale.setScalar(Math.max(1, this.settings.radius * fighter.specialCharge ** 2));
           this.boundary.material.opacity = .2 + fighter.specialCharge * .35;
           this.boundary.visible = true;
         } else if (this.technique === "dismantle") {
@@ -366,13 +457,16 @@ export class SukunaPowers {
       if (this.technique === "shrine") {
         this.origin.copy(fighter.pos).y += .1;
         this.boundary.position.copy(this.origin);
-        this.boundary.scale.setScalar(DOMAIN_RADIUS);
+        this.boundary.scale.setScalar(this.settings.radius);
+        this.sky.setRadius(this.settings.radius);
+        if (this.settings.form === "barrier") this.barrier.show(this.origin, this.settings.radius);
+        this.domainPulses = Math.round(this.settings.duration / DOMAIN_PULSE_INTERVAL);
         // The shrine rises at his back, its maw turned on whoever he opened the domain against.
         this.direction.set(0, 0, 1);
         if (this.target) this.direction.subVectors(this.target.pos, fighter.pos).setY(0);
         if (this.direction.lengthSq() < .01) this.direction.set(0, 0, 1);
         this.direction.normalize();
-        this.shrine.position.copy(this.origin).addScaledVector(this.direction, -13);
+        this.shrine.position.copy(this.origin).addScaledVector(this.direction, -Math.min(13, this.settings.radius * .35));
         this.shrine.rotation.y = Math.atan2(this.direction.x, this.direction.z);
         this.shrine.scale.set(SHRINE_SCALE, .02, SHRINE_SCALE);
         this.shrineRise = this.shrineGround = 0;
@@ -380,6 +474,8 @@ export class SukunaPowers {
         fighter.castSwing = 1; this.poseHold = .7;
         this.shrineActive = true;
         this.openDomain.center.copy(this.origin);
+        this.openDomain.radius = this.settings.radius;
+        this.openDomain.form = this.settings.form;
         this.age = 0;
         energy.openDomain();
         this.pulse = 0;
@@ -390,22 +486,7 @@ export class SukunaPowers {
       }
       this.origin.copy(fighter.pos).y += 1.35;
       if (this.technique === "fuga") {
-        // The fire flies to where he aimed at the start of the cast. A wall in the way takes the blast instead.
-        this.fugaFrom.copy(this.origin);
-        this.fugaEnd.copy(this.fugaPoint);
-        if (!fighter.lineClear(this.origin, this.fugaPoint)) {
-          let clear = 0, blocked = 1;
-          for (let i = 0; i < 6; i++) {
-            const middle = (clear + blocked) / 2;
-            if (fighter.lineClear(this.origin, this.point.lerpVectors(this.origin, this.fugaPoint, middle))) clear = middle; else blocked = middle;
-          }
-          this.fugaEnd.lerpVectors(this.origin, this.fugaPoint, clear);
-        }
-        this.fugaTime = 0;
-        this.fugaDuration = Math.max(.04, this.fugaFrom.distanceTo(this.fugaEnd) / FUGA_SPEED);
-        this.fugaFlying = true;
-        this.onRelease("fuga", this.origin);
-        this.slashes = 0; // the vow is spent; the next Fuga needs another full count
+        this.releaseFuga(fighter);
         this.cooldown = 3.4;
         this.stop(fighter);
         return;
@@ -498,6 +579,9 @@ export class SukunaPowers {
       this.fugaPoint.copy(this.point).add(this.cutOffset.copy(opponent.vel).multiplyScalar(leadTime).clampLength(0, FUGA_RADIUS));
       if (!fighter.lineClear(this.origin, this.fugaPoint)) this.fugaPoint.copy(this.point);
       this.fugaCooldown = 15;
+      this.fugaShot.power = fugaPower(this.slashes);
+      this.fugaShot.radius = fugaRadius(this.fugaShot.power);
+      this.impactRing.scale.setScalar(this.fugaShot.radius);
     }
     if (technique === "dismantle") {
       this.volleyTargets.push(opponent);
@@ -597,13 +681,16 @@ export class SukunaPowers {
     }
     this.fugaFlying = false;
     this.fugaFx.hideArrow();
-    this.fugaFx.erupt(this.fugaEnd, FUGA_RADIUS * .62);
-    this.onFuga(this.fugaEnd);
+    const { power, radius } = this.fugaShot;
+    this.fugaFx.erupt(this.fugaEnd, radius * .62, power);
+    this.onFuga(this.fugaEnd, radius, power);
     for (const enemy of enemies) {
       this.point.copy(enemy.pos).y += 1;
-      if (!enemy.vitals.defeated && this.point.distanceToSquared(this.fugaEnd) <= FUGA_RADIUS ** 2
-        && fighter.lineClear(this.fugaEnd, this.point)) {
-        this.onHit("fuga", enemy, this.direction.subVectors(this.point, this.fugaEnd).normalize());
+      const distance = this.point.distanceTo(this.fugaEnd);
+      if (!enemy.vitals.defeated && distance <= radius && fighter.lineClear(this.fugaEnd, this.point)) {
+        // A charged Fuga hits harder at its heart and fades toward its edge.
+        const scale = (1 + power * 1.5) * (1 - power * .5 * distance / radius);
+        this.onHit("fuga", enemy, this.direction.subVectors(this.point, this.fugaEnd).normalize(), scale);
       }
     }
   }
@@ -612,9 +699,53 @@ export class SukunaPowers {
     if (this.target === target && !this.shrineActive) this.stop(fighter);
   }
 
-  private begin(fighter: Faora, technique: SukunaTechnique, target: CombatTarget | null, cooldown: number) {
+  /** Pick the domain's form, size and duration for the fight in front of him, and the longest he can afford. */
+  private planDomain(fighter: Faora, enemies: readonly CombatTarget[], counter = false): { target: CombatTarget; settings: DomainSettings } | null {
+    const energy = fighter.cursedEnergy!;
+    const inRange = enemies.filter(enemy => !enemy.vitals.defeated && !enemy.vitals.frozen
+      && enemy.pos.distanceToSquared(fighter.pos) <= OPEN_RADIUS.max ** 2);
+    if (!inRange.length) return null;
+    const target = [...inRange].sort((a, b) => Number(Boolean(b.infinityProtects)) - Number(Boolean(a.infinityProtects))
+      || b.vitals.health - a.vitals.health)[0];
+    const farthest = Math.max(...inRange.map(enemy => enemy.pos.distanceTo(fighter.pos)));
+    // Seal them in when everyone fits inside a barrier; throw it wide when they're spread out or far.
+    const form: DomainForm = farthest + 10 <= BARRIER_RADIUS.max ? "barrier" : "open";
+    const radius = form === "barrier"
+      ? THREE.MathUtils.clamp(farthest + 12, BARRIER_RADIUS.min, BARRIER_RADIUS.max)
+      : THREE.MathUtils.clamp(farthest + 25, OPEN_RADIUS.min, OPEN_RADIUS.max);
+    const keep = fighter.vitals.healthFraction < .5 ? CURSED_COST.rct : 0;
+    for (let duration = form === "barrier" ? DOMAIN_DURATION.barrier : DOMAIN_DURATION.open; duration >= DOMAIN_DURATION.min; duration--) {
+      const settings = { form, radius, duration };
+      if (energy.canSpend(domainCost(settings) * (counter ? COUNTER_DOMAIN_COST : 1), keep)) return { target, settings };
+    }
+    return null;
+  }
+
+  /** Loose the Fuga toward fugaPoint; a wall in the way takes the blast instead. Spends the vow's slashes. */
+  private releaseFuga(fighter: Faora) {
+    this.origin.copy(fighter.pos).y += 1.35;
+    this.fugaFrom.copy(this.origin);
+    this.fugaEnd.copy(this.fugaPoint);
+    if (!fighter.lineClear(this.origin, this.fugaPoint)) {
+      let clear = 0, blocked = 1;
+      for (let i = 0; i < 6; i++) {
+        const middle = (clear + blocked) / 2;
+        if (fighter.lineClear(this.origin, this.point.lerpVectors(this.origin, this.fugaPoint, middle))) clear = middle; else blocked = middle;
+      }
+      this.fugaEnd.lerpVectors(this.origin, this.fugaPoint, clear);
+    }
+    this.fugaShot.power = fugaPower(this.slashes);
+    this.fugaShot.radius = fugaRadius(this.fugaShot.power);
+    this.fugaTime = 0;
+    this.fugaDuration = Math.max(.04, this.fugaFrom.distanceTo(this.fugaEnd) / FUGA_SPEED);
+    this.fugaFlying = true;
+    this.onRelease("fuga", this.origin);
+    this.slashes = 0; // the vow is spent; the next Fuga needs another full count
+  }
+
+  private begin(fighter: Faora, technique: SukunaTechnique, target: CombatTarget | null, cooldown: number, cost = COST[technique]) {
     const energy = fighter.cursedEnergy;
-    if (!(technique === "rct" ? energy?.startRct() : energy?.spend(COST[technique]))) return;
+    if (!(technique === "rct" ? energy?.startRct() : energy?.spend(cost))) return;
     this.technique = technique;
     this.target = target;
     this.age = 0;

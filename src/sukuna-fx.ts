@@ -294,8 +294,10 @@ export class FugaFx {
   readonly pillar: THREE.Mesh<THREE.CylinderGeometry, THREE.ShaderMaterial>;
   private readonly flame: THREE.Mesh<THREE.ConeGeometry, THREE.ShaderMaterial>;
   private readonly shaft: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
+  private readonly fireball: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
   private pillarAge = 9;
   private pillarRadius = 1;
+  private power = 0;
   private static readonly PILLAR_LIFE = 3.4;
 
   constructor(scene: THREE.Scene) {
@@ -312,8 +314,11 @@ export class FugaFx {
     column.translate(0, .5, 0);
     this.pillar = new THREE.Mesh(column, flameMaterial("fire", { stretch: 3.6, speed: 2.8, base: .3, soft: .92, cut: .54, floor: .05 }));
     this.pillar.renderOrder = 5;
-    this.arrow.visible = this.pillar.visible = false;
-    scene.add(this.arrow, this.pillar);
+    // A charged Fuga detonates as a burning dome that rolls outward over everything it reaches.
+    this.fireball = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), flameMaterial("fire", { stretch: 2.2, speed: 1.6, base: .62, soft: .55, cut: .34 }));
+    this.fireball.renderOrder = 5;
+    this.arrow.visible = this.pillar.visible = this.fireball.visible = false;
+    scene.add(this.arrow, this.pillar, this.fireball);
   }
 
   /** tip is the arrowhead; strength 0..1 grows it from a spark between his hands into the full shot. */
@@ -331,10 +336,14 @@ export class FugaFx {
 
   hideArrow() { this.arrow.visible = false; }
 
-  erupt(point: THREE.Vector3, radius: number) {
+  /** power 0..1: how far past the binding vow's minimum the slashes ran. Strong ones add the fire dome. */
+  erupt(point: THREE.Vector3, radius: number, power = 0) {
     this.pillar.position.copy(point).y -= 1.5;
     this.pillarRadius = radius;
+    this.power = power;
     this.pillarAge = 0; this.pillar.visible = true;
+    this.fireball.position.copy(point);
+    this.fireball.visible = power > .12;
   }
 
   update(dt: number, time: number) {
@@ -344,12 +353,20 @@ export class FugaFx {
     if (t >= 1) { this.pillar.visible = false; return; }
     const swell = 1 - Math.exp(-this.pillarAge * 9);
     const radius = this.pillarRadius * (.35 + .65 * swell) * (1 - t * .35);
-    this.pillar.scale.set(radius, this.pillarRadius * (1.2 + swell * 2.6), radius);
+    this.pillar.scale.set(radius, this.pillarRadius * (1.2 + swell * (2.6 + this.power * 2.4)), radius);
     this.pillar.material.uniforms.uTime.value = time;
     this.pillar.material.uniforms.uOpacity.value = .7 * (1 - t) ** 1.4;
+    if (this.fireball.visible) {
+      // The dome reaches the blast radius in about half a second, then burns down and thins out.
+      const grow = 1 - Math.exp(-this.pillarAge * 5);
+      const dome = this.pillarRadius / .62 * (.15 + .85 * grow);
+      this.fireball.scale.set(dome, dome * (.7 + .3 * grow), dome);
+      this.fireball.material.uniforms.uTime.value = time;
+      this.fireball.material.uniforms.uOpacity.value = (.35 + .55 * this.power) * (1 - t) ** 1.6;
+    }
   }
 
-  hide() { this.arrow.visible = this.pillar.visible = false; this.pillarAge = 9; }
+  hide() { this.arrow.visible = this.pillar.visible = this.fireball.visible = false; this.pillarAge = 9; }
 }
 
 /** The inside of the domain: a blood-dark sky that flares each time the shrine cuts. */
@@ -357,8 +374,10 @@ export class DomainSky {
   readonly mesh: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
   private pulse = 0;
   private level = 0;
+  private readonly baseRadius: number;
 
   constructor(scene: THREE.Scene, radius: number) {
+    this.baseRadius = radius;
     this.mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 40, 20), new THREE.ShaderMaterial({
       uniforms: { uOpacity: { value: 0 }, uPulse: { value: 0 }, uTime: { value: 0 } },
       transparent: true, depthWrite: false, side: THREE.BackSide, toneMapped: false, fog: false,
@@ -395,17 +414,87 @@ export class DomainSky {
 
   flare() { this.pulse = 1; }
 
-  update(dt: number, time: number, center: THREE.Vector3, active: boolean) {
+  /** Domains come in any size now; the sky is built at the largest and scaled down. */
+  setRadius(radius: number) { this.mesh.scale.setScalar(radius / this.baseRadius); }
+
+  /** closed: the barrier form, whose sky is nearly opaque. */
+  update(dt: number, time: number, center: THREE.Vector3, active: boolean, closed = false) {
     this.level += ((active ? 1 : 0) - this.level) * (1 - Math.exp(-dt * (active ? 2.2 : 3)));
     this.pulse *= Math.exp(-dt * 5);
     if (!active && this.level < .01) { this.hide(); return; }
     this.mesh.visible = true;
     this.mesh.position.copy(center);
     const { uniforms } = this.mesh.material;
-    uniforms.uOpacity.value = this.level; uniforms.uPulse.value = this.pulse; uniforms.uTime.value = time;
+    uniforms.uOpacity.value = this.level * (closed ? 1.3 : 1); uniforms.uPulse.value = this.pulse; uniforms.uTime.value = time;
   }
 
   hide() { this.level = this.pulse = 0; this.mesh.visible = false; }
+}
+
+/** The closed Malevolent Shrine seen from outside: a dark, veined dome with a burning rim. */
+export class ShrineBarrier {
+  readonly mesh: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
+  private level = 0;
+  private pulse = 0;
+  private active = false;
+
+  constructor(scene: THREE.Scene) {
+    this.mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 32), new THREE.ShaderMaterial({
+      uniforms: { uOpacity: { value: 0 }, uPulse: { value: 0 }, uTime: { value: 0 } },
+      transparent: true, depthWrite: false, side: THREE.FrontSide, toneMapped: false,
+      vertexShader: /* glsl */ `
+        #include <common>
+        #include <logdepthbuf_pars_vertex>
+        varying vec3 vDir, vNormal, vView;
+        void main() {
+          vDir = normalize(position);
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vNormal = normalMatrix * normal; vView = -mv.xyz;
+          gl_Position = projectionMatrix * mv;
+          #include <logdepthbuf_vertex>
+        }`,
+      fragmentShader: /* glsl */ `
+        #include <common>
+        #include <logdepthbuf_pars_fragment>
+        uniform float uOpacity, uPulse, uTime;
+        varying vec3 vDir, vNormal, vView;
+        ${NOISE}
+        void main() {
+          #include <logdepthbuf_fragment>
+          float around = atan(vDir.z, vDir.x) / 6.2831853 + .5;
+          float veins = fbm(vec2(around * 22.0 + uTime * .02, vDir.y * 9.0 - uTime * .08), 22.0);
+          float rim = 1.0 - abs(dot(normalize(vNormal), normalize(vView)));
+          vec3 color = mix(vec3(.05, .0, .01), vec3(.62, .03, .07), smoothstep(.55, .85, veins));
+          color += vec3(1.0, .25, .12) * pow(rim, 3.0) * (.55 + uPulse * 1.2);
+          float alpha = uOpacity * (.78 + rim * .22);
+          if (alpha < .004) discard;
+          gl_FragColor = vec4(color, alpha);
+          #include <colorspace_fragment>
+        }`,
+    }));
+    this.mesh.renderOrder = 2; this.mesh.visible = false;
+    scene.add(this.mesh);
+  }
+
+  show(center: THREE.Vector3, radius: number) {
+    this.mesh.position.copy(center);
+    this.mesh.scale.setScalar(radius);
+    this.active = true;
+  }
+
+  close() { this.active = false; }
+  flare() { this.pulse = 1; }
+
+  update(dt: number, time: number) {
+    this.level += ((this.active ? 1 : 0) - this.level) * (1 - Math.exp(-dt * (this.active ? 3 : 2.5)));
+    this.pulse *= Math.exp(-dt * 5);
+    if (!this.active && this.level < .01) { this.hide(); return; }
+    this.mesh.visible = true;
+    const { uniforms } = this.mesh.material;
+    uniforms.uOpacity.value = this.level; uniforms.uPulse.value = this.pulse; uniforms.uTime.value = time;
+  }
+
+  hide() { this.active = false; this.level = this.pulse = 0; this.mesh.visible = false; }
 }
 
 /**

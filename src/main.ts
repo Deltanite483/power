@@ -1,6 +1,6 @@
-import { SukunaPowers } from "./sukuna";
+import { FUGA_SLASHES, SukunaPowers, fugaPower } from "./sukuna";
 import { GOJO_HITS, GojoPowers } from "./gojo";
-import { CURSED_COST } from "./cursed-energy";
+import { CLASH_BURNOUT_SCALE, CURSED_COST } from "./cursed-energy";
 import { AnissaGrab } from "./anissa-grab";
 import {KickView} from "./kick";
 import { MomentumWaves, momentumContact } from "./momentum";
@@ -142,7 +142,8 @@ async function main() {
   const gojoPowers = new GojoPowers(scene);
   const combatLight = new THREE.PointLight(0xffa769, 0, 0, 2);
   scene.add(combatLight);
-  let novaWake: { origin: THREE.Vector3; radius: number; age: number; hostile: boolean; enemyTeam: boolean; cover: Map<object,number> } | null = null;
+  /** The outward blast wave of a Doomsday nova or a charged Fuga; owner is whoever set it off. */
+  let novaWake: { origin: THREE.Vector3; radius: number; age: number; hostile: boolean; enemyTeam: boolean; cover: Map<object,number>; owner: Faora } | null = null;
   const activeFighters = () => roster.filter(isDeployed);
   const roster = [faora, anissa, beast, doomsday, sukuna, gojo];
   let observerMode = false;
@@ -1074,8 +1075,24 @@ async function main() {
         sound.grunt("effort", "sukuna", .72, origin);
     }
   };
+  /** Everyone inside Sukuna's closed barrier when it formed stays inside until it falls. */
+  const barrierTrapped = new Set<typeof player | Faora>();
+  const barrierUnconstrained = new THREE.Vector3(), barrierCorrection = new THREE.Vector3();
   sukunaPowers.onRelease = (kind, origin) => {
     sound.sukuna(kind === "shrine" ? "shrine-open" : kind === "fuga" ? "fuga-fire" : "world-fire", origin);
+    const domain = sukunaPowers.domain;
+    if (kind === "shrine" && domain?.form === "barrier") {
+      barrierTrapped.clear();
+      for (const body of [player, ...activeFighters()])
+        if (body !== sukuna && body.pos.distanceToSquared(domain.center) < domain.radius ** 2) barrierTrapped.add(body);
+    }
+  };
+  hud.techniqueNote = fighter => {
+    if (fighter !== sukuna) return "";
+    const domain = sukunaPowers.domain;
+    if (domain) return `${domain.form === "barrier" ? "BARRIER" : "OPEN"} SHRINE · ${Math.ceil(sukunaPowers.domainTimeLeft)}s`;
+    const slashes = sukunaPowers.slashCount;
+    return slashes >= FUGA_SLASHES ? `FUGA READY · ${Math.round(fugaPower(slashes) * 100)}%` : `FUGA ${slashes}/${FUGA_SLASHES}`;
   };
   sukunaPowers.groundAt = (x, y, z) => {
     const ground = destruction.spans(x, z).floor(y);
@@ -1101,22 +1118,36 @@ async function main() {
       hud.shake = Math.max(hud.shake, .45);
     }
   };
-  sukunaPowers.onFuga = point => {
-    damageEffects.fx.nova(point, 13);
+  sukunaPowers.onFuga = (point, radius, power) => {
+    damageEffects.fx.nova(point, radius);
+    // A minimum Fuga scorches what it lands on; a charged one levels everything in reach, air burst or not.
     const ground = destruction.spans(point.x, point.z).floor(point.y + 1);
-    if (Number.isFinite(ground) && Math.abs(ground - point.y) < 5) {
-      destruction.energyBlast(point, 18, roster);
+    if (power > .25 || (Number.isFinite(ground) && Math.abs(ground - point.y) < 5)) {
+      destruction.energyBlast(point, Math.max(18, radius), roster);
     }
     sound.sukuna("fuga-blast", point);
+    if (power > .25) {
+      // At strength it is a spectacle on the scale of Doomsday's nova: light, a rolling blast wave and a beat of stillness.
+      sound.doomsdayEnergy("nova-blast", point);
+      combatLight.position.copy(point).y += 10;
+      combatLight.color.setHex(0xff6a2a);
+      combatLight.distance = radius * 1.4;
+      combatLight.intensity = radius * radius * 4;
+      novaWake = { origin: point.clone(), radius, age: 0, hostile: sukuna.hostile, enemyTeam: sukuna.enemyMode, cover: new Map(), owner: sukuna };
+      hitPause(.04 + .08 * power);
+    }
+    hud.shake = Math.max(hud.shake, (.35 + power) * 1.2 / (1 + player.pos.distanceToSquared(point) / Math.max(4000, radius * radius)));
   };
-  sukunaPowers.onHit = (technique, target, direction) => {
+  sukunaPowers.onHit = (technique, target, direction, scale = 1) => {
     if (technique === "punch" || technique === "kick") {
       resolveCursedMelee(sukuna, target, direction, technique, technique === "punch" ? 37 : 55, 1, 0, true);
       return;
     }
-    const strength = { cleave: 95, dismantle: 72, fuga: 135, shrine: 45, "world-slash": 150 }[technique];
-    const impulse = technique === "fuga" ? 300 : technique === "world-slash" ? 240 : 0;
-    const damageMultiplier = technique === "cleave" ? .055 : technique === "dismantle" ? .16 : technique === "fuga" ? 1.4 : 1;
+    const boost = technique === "fuga" ? scale : technique === "shrine" ? sukunaPowers.sureHitScale : 1;
+    const strength = { cleave: 95, dismantle: 72, fuga: 135, shrine: 45, "world-slash": 150 }[technique] * boost;
+    const impulse = technique === "fuga" ? 300 * scale : technique === "world-slash" ? 240 : 0;
+    // Malevolent Shrine's slashes deal two thirds of their former damage; stagger and knockback are unchanged.
+    const damageMultiplier = technique === "cleave" ? .055 : technique === "dismantle" ? .16 : technique === "fuga" ? 1.4 : technique === "shrine" ? 2 / 3 : 1;
     if ((technique === "dismantle" || technique === "cleave") && slashSound++ % 5 === 0) {
       sound.sukuna(technique === "cleave" ? "cleave" : "cut", target.pos);
     }
@@ -1150,6 +1181,14 @@ async function main() {
     damageEffects.fx.beamImpact(to, new THREE.Vector3(0, 1, 0), 1 / 60, .7, false);
   };
   gojoPowers.onDomainDefense = (_kind, origin) => sound.gojo("infinity", origin);
+  sukunaPowers.insideHostileDomain = point => gojoActive && enemies(gojo, sukuna) && gojoPowers.insideVoid(point);
+  // Sukuna answers the Void's sure-hit the same way: Simple Domain, then Falling Blossom.
+  gojoPowers.sureHitWard = (target, spend) => {
+    if (target !== sukuna.asTarget) return 1;
+    if (!spend) return sukunaPowers.defense.cover;
+    const able = !sukuna.vitals.frozen && !sukuna.vitals.defeated && !sukuna.held && !sukuna.ragdoll.active;
+    return sukunaPowers.defense.defend(sukuna.cursedEnergy, able, kind => gojoPowers.showDefense(kind, sukuna.pos));
+  };
   gojoPowers.blockedAt = point => destruction.spans(point.x, point.z).solid(point.y);
   const gojoWindup = {
     blue: "blue-charge", "maximum-blue": "blue-charge", "blue-melee": "blue-charge",
@@ -1292,7 +1331,7 @@ async function main() {
   };
   doomsdayPowers.onNova=(origin,radius)=>{
     damageEffects.fx.nova(origin,radius);
-    novaWake={origin:origin.clone(),radius,age:0,hostile:doomsday.hostile,enemyTeam:doomsday.enemyMode,cover:new Map()};
+    novaWake={origin:origin.clone(),radius,age:0,hostile:doomsday.hostile,enemyTeam:doomsday.enemyMode,cover:new Map(),owner:doomsday};
     combatLight.position.copy(origin).y+=10;
     combatLight.color.setHex(0xffa769);
     combatLight.distance=radius*1.4;
@@ -1347,7 +1386,7 @@ async function main() {
       if(distance>front)return;
       let cover=wake.cover.get(body);
       if(cover===undefined){
-        cover=doomsday.lineClear(wake.origin,wake.origin.clone().add(novaDirection))?1:.15;
+        cover=wake.owner.lineClear(wake.origin,wake.origin.clone().add(novaDirection))?1:.15;
         wake.cover.set(body,cover);
       }
       novaDirection.y=Math.max(3,novaDirection.y+distance*.12);
@@ -1372,7 +1411,7 @@ async function main() {
       if(body===player)hud.shake=Math.max(hud.shake,.55*falloff*fade);
     };
     push(player);
-    for(const fighter of activeFighters())if(fighter!==doomsday && fighter.enemyMode!==wake.enemyTeam)push(fighter);
+    for(const fighter of activeFighters())if(fighter!==wake.owner && fighter.enemyMode!==wake.enemyTeam)push(fighter);
   };
   laserVision.onCharge = () => sound.laser(false, faora.pos);
   laserVision.onFire = () => sound.laser(true, faora.pos);
@@ -1669,6 +1708,8 @@ async function main() {
       for(const fighter of activeFighters())fighter.supportAnchor=fighter.enemyMode && !fighter.rescueCountering && !fighter.rescuePressure && leader && fighter!==leader?leader.asTarget:null;
       updateNovaWake(dt);
       if (!doomsday.vitals.frozen) doomsdayPowers.update(dt,doomsday,combatTargetFor(doomsday),doomsdayActive);
+      // His anti-domain timers keep running even while the Void holds him frozen.
+      if (sukunaActive) sukunaPowers.defense.update(dt);
       if (sukunaActive && !sukuna.vitals.frozen) {
         const targets = activeFighters().filter(fighter => enemies(sukuna, fighter) && !fighter.held).map(fighter => fighter.asTarget);
         if (!observerMode && sukuna.hostile && !player.held) targets.push(player);
@@ -1681,8 +1722,25 @@ async function main() {
         if (!observerMode && gojo.hostile && !player.held) targets.push(player);
         const domainTargets = activeFighters().filter(fighter => fighter !== gojo).map(fighter => fighter.asTarget);
         if (!observerMode) domainTargets.unshift(player);
-        gojoPowers.hostileDomain = sukunaActive ? sukunaPowers.domain : null;
+        // Only an enemy's Shrine is a threat to answer; an ally's is left alone.
+        const rival = sukunaActive && enemies(gojo, sukuna);
+        gojoPowers.hostileDomain = rival ? sukunaPowers.domain : null;
+        gojoPowers.hostileCaster = rival ? sukuna.asTarget : null;
         gojoPowers.update(dt, gojo,combatTargetFor(gojo), targets, domainTargets, elapsed);
+      }
+      // Domain clash: when Unlimited Void and Malevolent Shrine overlap, both cancel out and both casters burn out three times as long.
+      const shrineDomain = sukunaPowers.domain, voidDomain = gojoPowers.voidDomain;
+      if (shrineDomain && voidDomain && enemies(gojo, sukuna)
+        && shrineDomain.center.distanceTo(voidDomain.center) < shrineDomain.radius + voidDomain.radius) {
+        sukunaPowers.shatterDomain(sukuna, CLASH_BURNOUT_SCALE);
+        gojoPowers.shatterDomain(gojo, CLASH_BURNOUT_SCALE);
+        const middle = shrineDomain.center.clone().lerp(voidDomain.center, .5);
+        damageEffects.fx.nova(middle, Math.min(60, Math.max(shrineDomain.radius, voidDomain.radius)));
+        sound.gojo("void-pulse", middle);
+        sound.sukuna("shrine-pulse", middle);
+        hud.toast("DOMAIN CLASH", "Both domains shattered");
+        hud.shake = Math.max(hud.shake, 1 / (1 + player.pos.distanceToSquared(middle) / 4000));
+        hitPause(.1);
       }
       tracker.mark("Fighter setup");
       if (gojoPowers.domainActive && !voidWasActive) {
@@ -1716,6 +1774,19 @@ async function main() {
           } else fighter.model.position.copy(fighter.pos);
         }
       }
+      // Nobody walks out of the closed Malevolent Shrine.
+      if (sukunaPowers.domain?.form === "barrier") {
+        if (!observerMode && barrierTrapped.has(player)) sukunaPowers.confine(player.pos, player.vel);
+        for (const fighter of activeFighters()) {
+          if (fighter === sukuna || !barrierTrapped.has(fighter) || fighter.vitals.frozen) continue;
+          barrierUnconstrained.copy(fighter.pos);
+          if (!sukunaPowers.confine(fighter.pos, fighter.vel)) continue;
+          if (fighter.ragdoll.active) {
+            barrierCorrection.subVectors(fighter.pos, barrierUnconstrained);
+            fighter.ragdoll.translate(barrierCorrection, fighter.vel);
+          } else fighter.model.position.copy(fighter.pos);
+        }
+      } else barrierTrapped.clear();
       if (wasHeld) player.applyCamera(camera);
       if (!doomsday.vitals.frozen) doomsdayPowers.syncPose(doomsday);
       if(!doomsday.vitals.frozen && doomsdayPowers.beamImpact)damageEffects.fx.beamImpact(doomsdayPowers.beamImpact,doomsdayPowers.beamDirection,dt,2.4,true);
