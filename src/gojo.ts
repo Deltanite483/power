@@ -3,7 +3,7 @@ import type { HitSource } from "./combat-events";
 import type { CombatTarget, Faora } from "./faora";
 import type { CastPose } from "./fighter-animation";
 import { GojoEffects } from "./gojo-fx";
-import { BURNOUT_SECONDS, COUNTER_DOMAIN_COST, CURSED_COST, RCT_HEAL_FRACTION, type CursedEnergy } from "./cursed-energy";
+import { BURNOUT_SECONDS, COUNTER_DOMAIN_COST, CURSED_COST, INFINITY_TAX, RCT_HEAL_FRACTION, type CursedEnergy } from "./cursed-energy";
 import { DomainDefense, type DomainDefenseKind } from "./domain-defense";
 import { GojoOrbs, segmentDistanceSq, type GojoOrb, type GojoOrbSpec } from "./gojo-orbs";
 import { BlackFlashFx } from "./sukuna-fx";
@@ -38,7 +38,10 @@ const DOMAIN_DURATION = 10;
 const DOMAIN_PULSE_INTERVAL = 2;
 // Each multiplier applies to the HP left by the previous pulse.
 const DOMAIN_PULSE_MULTIPLIERS = [.5, .5, .48, .5];
-const AIR_INFINITY_UPKEEP = 6;
+/** CE per second to hold Infinity while airborne (on the ground it is CURSED_COST.infinity). */
+const AIR_INFINITY_UPKEEP = 1;
+/** Below this reserve he lets Infinity drop. */
+const INFINITY_FLOOR = 5;
 const INFINITY_REACTION_TIME = .55;
 const CAST_INTERRUPT_DAMAGE = 12;
 // A domain expansion is a committed cast: a stray punch must not throw away the reserve it took.
@@ -217,7 +220,7 @@ export class GojoPowers {
     this.incomingThreat = threatened;
     // Infinity holds through a domain's windup however low the reserve, or a rushing melee fighter breaks every expansion.
     if (this.cast?.kind === "void") this.infinityUntil = Math.max(this.infinityUntil, this.clock + .1);
-    else if (!energy.canSpend(0, airborne ? 36 : 26)) this.infinityUntil = 0;
+    else if (!energy.canSpend(0, INFINITY_FLOOR)) this.infinityUntil = 0;
     this.toggleInfinity(fighter, this.clock < this.infinityUntil);
     fighter.infinity?.update(dt, airborne);
     this.orbs.update(dt, this.clock, energy, fighter, targets, domainTargets);
@@ -263,7 +266,7 @@ export class GojoPowers {
     if (fighter.pos.distanceToSquared(center) > reach ** 2) return;
     const cost = this.voidCost(fighter);
     if (!energy.canSpend(cost)) {
-      if (!fighter.infinityProtects || !energy.canSpend(cost / 1.25)) return;
+      if (!fighter.infinityProtects || !energy.canSpend(cost / INFINITY_TAX)) return;
       this.infinityUntil = this.clock;
       this.toggleInfinity(fighter, false);
     }
@@ -386,8 +389,8 @@ export class GojoPowers {
       const cost = kind === "collapse" || kind === "steer" ? 2 : kind === "blink" ? CURSED_COST.blink
         : details.spec ? this.orbs.castCost(details.spec, COST[kind]) : kind === "void" ? this.voidCost(fighter) : COST[kind];
       const dropShield = !energy.canSpend(cost, keep);
-      if (dropShield && !(canDropShield && energy.canSpend(cost / 1.25, keep))) return;
-      const actualCost = fighter.infinityProtects && !dropShield ? cost * 1.25 : cost;
+      if (dropShield && !(canDropShield && energy.canSpend(cost / INFINITY_TAX, keep))) return;
+      const actualCost = fighter.infinityProtects && !dropShield ? cost * INFINITY_TAX : cost;
       // He mixes it up: repeating the last technique costs, and a little noise keeps him unpredictable.
       const repetition = kind !== this.lastTechnique ? 0 : kind === "blue-melee" || kind === "red-melee" ? 13 : 9;
       const score = value + Math.random() * 14 - repetition - actualCost * price - (dropShield && threatened ? 4 : 0);

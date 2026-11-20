@@ -14,11 +14,13 @@ const PAIN_CE_PER_HP = .2;
 const PAIN_RESERVE_CAP = .6;
 
 export const RCT_HEAL_FRACTION = .66;
+/** Infinity is nearly free to hold, but every technique cast through it costs this much more. */
+export const INFINITY_TAX = 1.5;
 /** Caught inside an enemy's domain, expanding your own costs this fraction: a domain is answered with a domain. */
 export const COUNTER_DOMAIN_COST = .4;
 
 export const CURSED_COST = {
-  melee: 3, gojoMelee: 4, infinity: 1.2, blink: 9, simpleDomain: 9, fallingBlossom: 12,
+  melee: 3, gojoMelee: 4, infinity: .2, blink: 9, simpleDomain: 9, fallingBlossom: 12,
   blueMelee: 12, redMelee: 16, blue: 7, red: 10, maximumBlue: 12,
   dismantle: 16, cleave: 20, rct: 24,
   purple: 30, openingPurple: 38, worldSlash: 37, fuga: 15, domain: 76,
@@ -38,9 +40,11 @@ export class CursedEnergy {
   get reserveFraction() { return this.#reserve / CAPACITY; }
   get auraLevel() { return this.reserveFraction * (this.burnedOut ? .18 : 1); }
   get burnedOut() { return this.#domain || this.#burnout > 0; }
+  /** The burnout after a domain closes (not the domain itself). */
+  get techniqueBurnout() { return this.#burnout > 0; }
   get canHeal() { return this.#rctCooldown === 0 && this.canSpend(CURSED_COST.rct); }
 
-  setInfinity(active: boolean) { this.#costScale = active ? 1.25 : 1; }
+  setInfinity(active: boolean) { this.#costScale = active ? INFINITY_TAX : 1; }
 
   /** True while a Black Flash has the sorcerer "in the zone". */
   get inZone() { return this.#focus > 0 && !this.burnedOut; }

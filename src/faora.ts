@@ -40,6 +40,8 @@ export type FaoraState = "follow" | "retaliate" | "ragdoll" | "carried";
 export type PunchStyle = "straight" | "uppercut" | "down";
 const UP = new THREE.Vector3(0, 1, 0);
 const BODY = 1.9;
+/** Top running speed for Gojo while burnout keeps him from flying. */
+const BURNOUT_RUN_SPEED = 14;
 const BEAST_SPRINT = 50; // m/s a charging sprint adds over his 22 m/s run
 const BEAST_SKIP_DISTANCE = 300;
 const BEAST_SKIP_COOLDOWN = 5;
@@ -310,6 +312,8 @@ export class Faora {
   private injuryCooldown = 0;
   private get fightStyle() { return this.isGojo ? FIGHT_STYLES.gojo : this.isSukuna ? FIGHT_STYLES.sukuna : this.isDoomsday?FIGHT_STYLES.doomsday:this.groundOnly ? FIGHT_STYLES.beast : this.name === "Anissa" ? FIGHT_STYLES.anissa : FIGHT_STYLES.faora; }
   get groundOnly() { return this.name === "Battle Beast" || this.isDoomsday || this.isSukuna; }
+  /** Gojo flies on cursed technique; in technique burnout he can't, so he runs and falls like anyone. */
+  get flightLocked() { return this.isGojo && !!this.cursedEnergy?.techniqueBurnout; }
   get hostile() { return !this.vitals.defeated && (this.enemyMode || this.angerTime > 0); }
   /** The fighter she's fighting, or null for the player (when hostile) / no one (when friendly). */
   opponent: Faora | null = null;
@@ -1402,6 +1406,12 @@ export class Faora {
       this.vel.y -= 9.81 * dt;
     } else if (this.isGojo && this.specialChanneling && !this.jumping) {
       this.vel.multiplyScalar(Math.exp(-dt * 12));
+    } else if (this.flightLocked) {
+      // Burned out: steer along the ground at a run, and let gravity bring him down.
+      const run = this.delta.setY(0).clampLength(0, BURNOUT_RUN_SPEED);
+      const change = run.sub(this.vel).setY(0), amount = change.length();
+      if (amount > 0) this.vel.addScaledVector(change, Math.min(1, 60 * this.vitals.control * dt / amount));
+      this.vel.y -= 9.81 * dt;
     } else if (this.jumping) {
       this.vel.y -= 9.81 * dt;
       this.vel.multiplyScalar(Math.exp(-dt * .015 * Math.min(1, this.vel.length() / 100)));
